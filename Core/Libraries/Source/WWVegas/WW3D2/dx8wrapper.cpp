@@ -185,7 +185,7 @@ static DynamicVectorClass<RenderDeviceDescClass>	_RenderDeviceDescriptionTable;
 typedef IDirect3D8* (WINAPI *Direct3DCreate8Type) (UINT SDKVersion);
 Direct3DCreate8Type	Direct3DCreate8Ptr = nullptr;
 HINSTANCE D3D8Lib = nullptr;
-#ifdef _WIN64
+#ifdef USE_D3D8TO9
 extern "C" IDirect3D8* WINAPI Direct3DCreate8(UINT SDKVersion);
 #endif
 
@@ -298,7 +298,7 @@ bool DX8Wrapper::Init(void * hwnd, bool lite)
 	Invalidate_Cached_Render_States();
 
 	if (!lite) {
-#ifdef _WIN64
+#ifdef USE_D3D8TO9
 		Direct3DCreate8Ptr = Direct3DCreate8;
 #else
 		D3D8Lib = LoadLibrary("D3D8.DLL");

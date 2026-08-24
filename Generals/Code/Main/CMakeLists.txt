@@ -10,8 +10,7 @@ endif()
 target_link_libraries(g_generals PRIVATE
     binkstub
     comctl32
-    dinput8
-    dxguid
+    d3d8lib
     g_gameengine
     g_gameenginedevice
     gi_always
@@ -20,11 +19,6 @@ target_link_libraries(g_generals PRIVATE
     vfw32
     winmm
 )
-if(CMAKE_SIZEOF_VOID_P EQUAL 4)
-    target_link_libraries(g_generals PRIVATE d3d8 d3dx8)
-else()
-    target_link_libraries(g_generals PRIVATE d3d9)
-endif()
 
 # TODO Originally referred to build host and user, replace with git info perhaps?
 file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/GeneratedVersion.h
