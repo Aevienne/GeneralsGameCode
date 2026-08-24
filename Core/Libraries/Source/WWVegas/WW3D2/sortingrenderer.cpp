@@ -329,16 +329,6 @@ static SortingNodeStruct* overlapping_nodes[MAX_OVERLAPPING_NODES];
 
 void SortingRendererClass::Insert_To_Sorted_List(SortingNodeStruct *state)
 {
-	/// @todo lorenzen sez use a bucket sort here... and stop copying so much data so many times
-
-	for (SortingNodeStructList::iterator node = sorted_list.begin(); node != sorted_list.end(); ++node)
-	{
-		if (state->transformed_center.Z > (*node)->transformed_center.Z) {
-			sorted_list.insert(node, state);
-			return;
-		}
-	}
-
 	sorted_list.push_back(state);
 }
 
@@ -606,13 +596,10 @@ void SortingRendererClass::Flush()
 	DX8Wrapper::Get_Transform(D3DTS_VIEW,old_view);
 	DX8Wrapper::Get_Transform(D3DTS_WORLD,old_world);
 
-	// TheSuperHackers @perf stephanmeesters 04/07/2026
-	// Splice nodes that have no bounding information (Z=0.0) at the correct location into the sorted list.
-	SortingNodeStructList::iterator node = sorted_list.begin();
-	while (node != sorted_list.end() && (*node)->transformed_center.Z > 0.0f) {
-		++node;
-	}
-	sorted_list.splice(node, unsorted_list);
+	sorted_list.splice(sorted_list.end(), unsorted_list);
+	sorted_list.sort([](const SortingNodeStruct* a, const SortingNodeStruct* b){
+		return a->transformed_center.Z > b->transformed_center.Z;
+	});
 
 	while (!sorted_list.empty()) {
 		SortingNodeStruct* state = sorted_list.front();

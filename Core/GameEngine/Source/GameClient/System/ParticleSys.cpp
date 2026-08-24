@@ -2108,11 +2108,14 @@ Bool ParticleSystem::update( Int localPlayerIndex  )
 	//
 	// Update all particles in the system
 	//
-	Particle *p = m_systemParticlesHead;
-	Particle *oldParticle;
-	while (p)
-	{
+	std::vector<Particle*> particles;
+	particles.reserve(getParticleCount());
+	for (Particle *p = m_systemParticlesHead; p; p = p->m_systemNext)
+		particles.push_back(p);
 
+	std::vector<Particle*> dead;
+	for (Particle *p : particles)
+	{
 		// apply 'gravity' force
 		if (m_gravity != 0.0f)
 		{
@@ -2124,14 +2127,11 @@ Bool ParticleSystem::update( Int localPlayerIndex  )
 		}
 
 		if (p->update() == false)
-		{
-			oldParticle = p;
-			p = p->m_systemNext;
-			deleteInstance(oldParticle);
-		} else {
-			p = p->m_systemNext;
-		}
+			dead.push_back(p);
 	}
+
+	for (Particle *oldParticle : dead)
+		deleteInstance(oldParticle);
 
 	//
 	// If we have been "destroyed", wait for all of our particles to die off,

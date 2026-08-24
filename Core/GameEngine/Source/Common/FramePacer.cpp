@@ -184,6 +184,9 @@ Real FramePacer::getActualLogicTimeScaleRatio(LogicTimeQueryFlags flags) const
 
 Real FramePacer::getActualLogicTimeScaleOverFpsRatio(LogicTimeQueryFlags flags) const
 {
+	if (!isActualFramesPerSecondLimitEnabled())
+		return 1.0f;
+
 	// TheSuperHackers @info Clamps ratio to min 1, because the logic
 	// frame rate is currently capped by the render frame rate.
 	return min(1.0f, (Real)getActualLogicTimeScaleFps(flags) / getUpdateFps());
@@ -191,10 +194,16 @@ Real FramePacer::getActualLogicTimeScaleOverFpsRatio(LogicTimeQueryFlags flags) 
 
 Real FramePacer::getLogicTimeStepSeconds(LogicTimeQueryFlags flags) const
 {
+	if (!isActualFramesPerSecondLimitEnabled())
+		return SECONDS_PER_LOGICFRAME_REAL;
+
 	return SECONDS_PER_LOGICFRAME_REAL * getActualLogicTimeScaleOverFpsRatio(flags);
 }
 
 Real FramePacer::getLogicTimeStepMilliseconds(LogicTimeQueryFlags flags) const
 {
+	if (!isActualFramesPerSecondLimitEnabled())
+		return MSEC_PER_LOGICFRAME_REAL;
+
 	return MSEC_PER_LOGICFRAME_REAL * getActualLogicTimeScaleOverFpsRatio(flags);
 }

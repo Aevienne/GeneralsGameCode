@@ -598,6 +598,8 @@ void RTS3DScene::renderOneObject(RenderInfoClass &rinfo, RenderObjClass *robj, I
 	}
 
 	LightEnvironmentClass lightEnv;
+	Bool lightEnvNeedsLocal = FALSE;	// must build a per-object light environment
+	Bool lightEnvReady = FALSE;		// local lightEnv already has the global/infantry lights
 	SphereClass sph = robj->Get_Bounding_Sphere();
 	drawInfo = (DrawableInfo *)robj->Get_User_Data();
 	if (drawInfo)
@@ -662,9 +664,6 @@ void RTS3DScene::renderOneObject(RenderInfoClass &rinfo, RenderObjClass *robj, I
 			sceneLights = m_infantryLight;
 		}
 
-		lightEnv.Reset(sph.Center, ambient);
-
-
 		// HANDLE THE SPECIAL DRAWABLE-LEVEL COLORING SETTINGS FIRST
 
 		const Vector3 *tintColor = nullptr;
@@ -683,6 +682,11 @@ void RTS3DScene::renderOneObject(RenderInfoClass &rinfo, RenderObjClass *robj, I
 				Vector3::Add(sumTint, *tintColor, &sumTint);
 			if (selectionColor)
 				Vector3::Add(sumTint, *selectionColor, &sumTint);
+
+			// Tinting modifies the lights, so a per-object environment is required.
+			lightEnv.Reset(sph.Center, ambient);
+			lightEnvReady = TRUE;
+			lightEnvNeedsLocal = TRUE;
 
 			for (Int globalLightIndex = 0; globalLightIndex < m_numGlobalLights; globalLightIndex++)
 			{
@@ -703,12 +707,10 @@ void RTS3DScene::renderOneObject(RenderInfoClass &rinfo, RenderObjClass *robj, I
 			lightEnv.Set_Output_Ambient( temp );
 
 		}
-		else // no funny coloring going on, so just add the lights normally
+		else // no funny coloring going on. Infantry need a scaled per-object env
+			 // (m_infantryLight); everyone else reuses the precomputed shared default.
 		{
-			for (Int globalLightIndex = 0; globalLightIndex < m_numGlobalLights; globalLightIndex++)
-			{
-				lightEnv.Add_Light(*sceneLights[globalLightIndex]);
-			}
+			lightEnvNeedsLocal = (sceneLights != m_globalLight);
 		}
 
 		//Apply custom render pass for any drawables with heatvision enabled
@@ -757,14 +759,23 @@ void RTS3DScene::renderOneObject(RenderInfoClass &rinfo, RenderObjClass *robj, I
 		}
 		else
 		{
+			// No drawable (debug/fluff object). Build a local environment using the
+			// normal global lights.
 			lightEnv.Reset(sph.Center, ambient);
 			for (Int globalLightIndex = 0; globalLightIndex < m_numGlobalLights; globalLightIndex++)
 				lightEnv.Add_Light(*m_globalLight[globalLightIndex]);
+			lightEnvReady = TRUE;
+			lightEnvNeedsLocal = TRUE;
 		}
 	}
 
 	if (!drawableHidden)
 	{
+		// Determine whether any per-object (scene point/spot or dynamic) lights affect
+		// this object. If none do, and no tint or infantry scaling was applied, we can
+		// reuse the precomputed shared default environment instead of building one.
+		Bool hasPerObjectLights = FALSE;
+
 		//standard scene lights
 		RefRenderObjListIterator it2(&LightList);
 		for (it2.First(); !it2.Is_Done(); it2.Next())
@@ -773,30 +784,80 @@ void RTS3DScene::renderOneObject(RenderInfoClass &rinfo, RenderObjClass *robj, I
 			SphereClass lSph = pLight->Get_Bounding_Sphere();
 			Bool cull = (pLight->Get_Type() == LightClass::POINT && !Spheres_Intersect(sph, lSph));
 			if (!cull) {
-				lightEnv.Add_Light(*pLight);
+				hasPerObjectLights = TRUE;
+				break;
 			}
 		}
 
-    if( draw && draw->getReceivesDynamicLights() )
-    {
-		  // dynamic lights
-		  RefRenderObjListIterator dynaLightIt(&m_dynamicLightList);
-		  for (dynaLightIt.First(); !dynaLightIt.Is_Done(); dynaLightIt.Next())
-		  {
-			  W3DDynamicLight* pDyna = (W3DDynamicLight*)dynaLightIt.Peek_Obj();
-			  if (!pDyna->isEnabled()) {
-				  continue;
-			  }
-			  SphereClass lSph = pDyna->Get_Bounding_Sphere();
-			  if (pDyna->Get_Type() == LightClass::POINT && !Spheres_Intersect(sph, lSph)) {
-				  continue;
-			  }
-			  lightEnv.Add_Light(*(LightClass*)dynaLightIt.Peek_Obj());
-		  }
-    }
+		if (!hasPerObjectLights && draw && draw->getReceivesDynamicLights())
+		{
+			// dynamic lights
+			RefRenderObjListIterator dynaLightIt(&m_dynamicLightList);
+			for (dynaLightIt.First(); !dynaLightIt.Is_Done(); dynaLightIt.Next())
+			{
+				W3DDynamicLight* pDyna = (W3DDynamicLight*)dynaLightIt.Peek_Obj();
+				if (!pDyna->isEnabled()) {
+					continue;
+				}
+				SphereClass lSph = pDyna->Get_Bounding_Sphere();
+				if (pDyna->Get_Type() == LightClass::POINT && !Spheres_Intersect(sph, lSph)) {
+					continue;
+				}
+				hasPerObjectLights = TRUE;
+				break;
+			}
+		}
 
-		lightEnv.Pre_Render_Update(rinfo.Camera.Get_Transform());
-		rinfo.light_environment = &lightEnv;
+		if (lightEnvNeedsLocal || hasPerObjectLights)
+		{
+			// Build the per-object environment. If it was not already populated (e.g.
+			// tint case), start from scratch using the global/infantry lights.
+			if (!lightEnvReady)
+			{
+				lightEnv.Reset(sph.Center, ambient);
+				for (Int globalLightIndex = 0; globalLightIndex < m_numGlobalLights; globalLightIndex++)
+					lightEnv.Add_Light(*sceneLights[globalLightIndex]);
+				lightEnvReady = TRUE;
+			}
+
+			//standard scene lights
+			RefRenderObjListIterator it3(&LightList);
+			for (it3.First(); !it3.Is_Done(); it3.Next())
+			{
+				LightClass *pLight = (LightClass*)it3.Peek_Obj();
+				SphereClass lSph = pLight->Get_Bounding_Sphere();
+				Bool cull = (pLight->Get_Type() == LightClass::POINT && !Spheres_Intersect(sph, lSph));
+				if (!cull) {
+					lightEnv.Add_Light(*pLight);
+				}
+			}
+
+			if (draw && draw->getReceivesDynamicLights())
+			{
+				// dynamic lights
+				RefRenderObjListIterator dynaLightIt(&m_dynamicLightList);
+				for (dynaLightIt.First(); !dynaLightIt.Is_Done(); dynaLightIt.Next())
+				{
+					W3DDynamicLight* pDyna = (W3DDynamicLight*)dynaLightIt.Peek_Obj();
+					if (!pDyna->isEnabled()) {
+						continue;
+					}
+					SphereClass lSph = pDyna->Get_Bounding_Sphere();
+					if (pDyna->Get_Type() == LightClass::POINT && !Spheres_Intersect(sph, lSph)) {
+						continue;
+					}
+					lightEnv.Add_Light(*(LightClass*)dynaLightIt.Peek_Obj());
+				}
+			}
+
+			lightEnv.Pre_Render_Update(rinfo.Camera.Get_Transform());
+			rinfo.light_environment = &lightEnv;
+		}
+		else
+		{
+			// Reuse the precomputed shared default light environment.
+			rinfo.light_environment = &m_defaultLightEnv;
+		}
 
 		if (drawInfo)
 		{
