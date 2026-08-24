@@ -6098,7 +6098,7 @@ void Pathfinder::processPathfindQueue()
 
 	m_cumulativeCellsAllocated = 0;	// Number of pathfind cells examined.
 	Int pathsFound = 0;
-	while (m_cumulativeCellsAllocated < PATHFIND_CELLS_PER_FRAME &&
+	while (pathsFound < 1 && m_cumulativeCellsAllocated < PATHFIND_CELLS_PER_FRAME &&
 		m_queuePRTail!=m_queuePRHead) {
 		Object *obj = TheGameLogic->findObjectByID(m_queuedPathfindRequests[m_queuePRHead]);
 		m_queuedPathfindRequests[m_queuePRHead] = INVALID_ID;
