@@ -31,6 +31,13 @@
 #include <windows.h>
 #include <commctrl.h>
 
+#ifdef _WIN64
+void DebugExceptionhandler::LogExceptionLocation(Debug &, struct _EXCEPTION_POINTERS *) {}
+void DebugExceptionhandler::LogRegisters(Debug &, struct _EXCEPTION_POINTERS *) {}
+void DebugExceptionhandler::LogFPURegisters(Debug &, struct _EXCEPTION_POINTERS *) {}
+const char *DebugExceptionhandler::GetExceptionType(struct _EXCEPTION_POINTERS *, char *) { return "UNKNOWN"; }
+LONG __stdcall DebugExceptionhandler::ExceptionFilter(struct _EXCEPTION_POINTERS*) { return EXCEPTION_EXECUTE_HANDLER; }
+#else
 DebugExceptionhandler::DebugExceptionhandler()
 {
   // don't do anything here!
@@ -412,3 +419,4 @@ LONG __stdcall DebugExceptionhandler::ExceptionFilter(struct _EXCEPTION_POINTERS
   // Now die
   return EXCEPTION_EXECUTE_HANDLER;
 }
+#endif
