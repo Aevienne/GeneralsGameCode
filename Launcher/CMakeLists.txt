@@ -1,0 +1,7 @@
+add_executable(generals_launcher WIN32 src/launcher.cpp)
+set_target_properties(generals_launcher PROPERTIES OUTPUT_NAME "GeneralsLauncher")
+target_link_libraries(generals_launcher PRIVATE kernel32 user32)
+if(MSVC)
+    target_link_options(generals_launcher PRIVATE "/MANIFEST:NO")
+endif()
+target_compile_features(generals_launcher PRIVATE cxx_std_17)

@@ -82,6 +82,8 @@ endif()
 
 add_subdirectory(resources)
 
+add_subdirectory(Launcher)
+
 add_subdirectory(Core)
 
 # Add main build targets
