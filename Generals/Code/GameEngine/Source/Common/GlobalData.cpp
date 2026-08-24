@@ -80,6 +80,7 @@ GlobalData* GlobalData::m_theOriginal = nullptr;
 	{ "MoveHintName",							INI::parseAsciiString,nullptr,			offsetof( GlobalData, m_moveHintName ) },
 	{ "UseTrees",									INI::parseBool,				nullptr,			offsetof( GlobalData, m_useTrees ) },
 	{ "UseFPSLimit",							INI::parseBool,				nullptr,			offsetof( GlobalData, m_useFpsLimit ) },
+	{ "UseVSync",									INI::parseBool,				nullptr,			offsetof( GlobalData, m_useVSync ) },
 	{ "DumpAssetUsage",						INI::parseBool,				nullptr,			offsetof( GlobalData, m_dumpAssetUsage ) },
 	{ "FramesPerSecondLimit",			INI::parseInt,				nullptr,			offsetof( GlobalData, m_framesPerSecondLimit ) },
 	{ "ChipsetType",							INI::parseInt,				nullptr,			offsetof( GlobalData, m_chipSetType ) },
@@ -629,6 +630,7 @@ GlobalData::GlobalData()
 	m_useDrawModuleLOD = FALSE;
 	m_useHeatEffects = TRUE;
 	m_useFpsLimit = FALSE;
+	m_useVSync = FALSE;
 	m_dumpAssetUsage = FALSE;
 	m_framesPerSecondLimit = 0;
 	m_chipSetType = 0;

@@ -714,16 +714,15 @@ static Bool initializeAppWindows( HINSTANCE hInstance, Int nCmdShow, Bool runWin
 		windowStyle |= WS_EX_TOPMOST | WS_SYSMENU;
 
 	RECT rect;
+	if (runWindowed && TheGlobalData && TheGlobalData->m_xResolution > 0 && TheGlobalData->m_yResolution > 0) {
+		startWidth = TheGlobalData->m_xResolution;
+		startHeight = TheGlobalData->m_yResolution;
+	}
 	rect.left = 0;
 	rect.top = 0;
 	rect.right = startWidth;
 	rect.bottom = startHeight;
 	AdjustWindowRect (&rect, windowStyle, FALSE);
-	if (runWindowed) {
-		// Makes the normal debug 800x600 window center in the screen.
-		startWidth = DEFAULT_DISPLAY_WIDTH;
-		startHeight= DEFAULT_DISPLAY_HEIGHT;
-	}
 
 	gInitializing = true;
 

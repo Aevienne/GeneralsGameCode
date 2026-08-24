@@ -712,8 +712,10 @@ bool Debug::CrashDone(bool die)
             }
             break;
           case IDRETRY:
-#if defined(_MSC_VER)
+#if defined(_MSC_VER) && defined(_M_IX86)
             _asm int 0x03
+#elif defined(_MSC_VER) && defined(_M_X64)
+            __debugbreak();
 #elif defined(__GNUC__)
             __builtin_trap();
 #else

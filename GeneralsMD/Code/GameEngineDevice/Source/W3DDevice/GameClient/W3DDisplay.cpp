@@ -47,6 +47,7 @@ static void drawFramerateBar();
 #include "Common/PerfTimer.h"
 #include "Common/FileSystem.h"
 #include "Common/LocalFileSystem.h"
+#include "WW3D2/dx8wrapper.h"
 #include "Common/Player.h"
 #include "Common/PlayerList.h"
 #include "Common/ThingTemplate.h"
@@ -741,6 +742,8 @@ void W3DDisplay::init()
 	// with its own logic
 	//
 	Display::init();
+
+	DX8Wrapper::SetVSync(TheGlobalData ? TheGlobalData->m_useVSync : false);
 
 	// handle re-entry for ourselves
 	if( m_initialized )

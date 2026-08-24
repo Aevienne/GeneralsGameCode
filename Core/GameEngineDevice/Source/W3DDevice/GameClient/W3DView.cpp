@@ -234,9 +234,11 @@ void W3DView::setWidth(Int width)
  	vMax.X=(Real)(m_originX+width)/(Real)TheDisplay->getWidth();
  	m_3DCamera->Set_Viewport(vMin,vMax);
 
-	//we want to maintain the same scale, so we'll need to adjust the fov.
-	//default W3D fov for full-screen is 50 degrees.
-	m_3DCamera->Set_View_Plane((Real)width/(Real)TheDisplay->getWidth()*DEG_TO_RADF(50.0f),-1);
+	// Maintain vertical FOV of 50 degrees at 4:3, expand horizontally for widescreen
+	Real baseAspect = 4.0f / 3.0f;
+	Real curAspect = (Real)TheDisplay->getWidth() / (Real)TheDisplay->getHeight();
+	Real hFov = 2.0f * atanf(tanf(DEG_TO_RADF(50.0f) * 0.5f) * curAspect / baseAspect) * (Real)width / (Real)TheDisplay->getWidth();
+	m_3DCamera->Set_View_Plane(hFov,-1);
 
 	m_cameraAreaConstraintsValid = false;
 	m_recalcCamera = true;

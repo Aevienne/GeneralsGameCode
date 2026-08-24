@@ -36,7 +36,11 @@ void DebugExceptionhandler::LogExceptionLocation(Debug &, struct _EXCEPTION_POIN
 void DebugExceptionhandler::LogRegisters(Debug &, struct _EXCEPTION_POINTERS *) {}
 void DebugExceptionhandler::LogFPURegisters(Debug &, struct _EXCEPTION_POINTERS *) {}
 const char *DebugExceptionhandler::GetExceptionType(struct _EXCEPTION_POINTERS *, char *) { return "UNKNOWN"; }
-LONG __stdcall DebugExceptionhandler::ExceptionFilter(struct _EXCEPTION_POINTERS*) { return EXCEPTION_EXECUTE_HANDLER; }
+LONG __stdcall DebugExceptionhandler::ExceptionFilter(struct _EXCEPTION_POINTERS* p) {
+    (void)p;
+    // Let OS handle it so WER/procdump can capture a real dump
+    return EXCEPTION_CONTINUE_SEARCH;
+}
 #else
 DebugExceptionhandler::DebugExceptionhandler()
 {

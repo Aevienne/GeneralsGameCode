@@ -30,6 +30,81 @@
 #include "mutex.h"
 #include "SystemAllocator.h"
 
+typedef BOOL (WINAPI *SymInitialize_t) (
+	HANDLE hProcess,
+	LPSTR UserSearchPath,
+	BOOL fInvadeProcess);
+
+typedef BOOL (WINAPI *SymCleanup_t) (
+	HANDLE hProcess);
+
+typedef BOOL (WINAPI *SymLoadModule_t) (
+	HANDLE hProcess,
+	HANDLE hFile,
+	LPSTR ImageName,
+	LPSTR ModuleName,
+	DWORD64 BaseOfDll,
+	DWORD SizeOfDll);
+
+#ifdef _WIN64
+typedef DWORD64 (WINAPI *SymGetModuleBase_t) (
+	HANDLE hProcess,
+	DWORD64 dwAddr);
+#else
+typedef DWORD (WINAPI *SymGetModuleBase_t) (
+	HANDLE hProcess,
+	DWORD dwAddr);
+#endif
+
+typedef BOOL (WINAPI *SymUnloadModule_t) (
+	HANDLE hProcess,
+	DWORD64 BaseOfDll);
+
+typedef BOOL (WINAPI *SymGetSymFromAddr_t) (
+	HANDLE hProcess,
+	DWORD64 Address,
+	PDWORD64 Displacement,
+	PIMAGEHLP_SYMBOL64 Symbol);
+
+typedef BOOL (WINAPI* SymGetLineFromAddr_t) (
+	HANDLE hProcess,
+	DWORD64 dwAddr,
+	PDWORD64 pdwDisplacement,
+	PIMAGEHLP_LINE64 Line);
+
+typedef DWORD (WINAPI *SymSetOptions_t) (
+	DWORD SymOptions);
+
+#ifdef _WIN64
+typedef LPVOID (WINAPI *SymFunctionTableAccess_t) (
+	HANDLE hProcess,
+	DWORD64 AddrBase);
+typedef BOOL (WINAPI *StackWalk_t) (
+	DWORD MachineType,
+	HANDLE hProcess,
+	HANDLE hThread,
+	LPSTACKFRAME64 StackFrame,
+	LPVOID ContextRecord,
+	PREAD_PROCESS_MEMORY_ROUTINE ReadMemoryRoutine,
+	PFUNCTION_TABLE_ACCESS_ROUTINE64 FunctionTableAccessRoutine,
+	PGET_MODULE_BASE_ROUTINE64 GetModuleBaseRoutine,
+	PTRANSLATE_ADDRESS_ROUTINE TranslateAddress);
+#else
+typedef LPVOID (WINAPI *SymFunctionTableAccess_t) (
+	HANDLE hProcess,
+	DWORD AddrBase);
+typedef BOOL (WINAPI *StackWalk_t) (
+	DWORD MachineType,
+	HANDLE hProcess,
+	HANDLE hThread,
+	LPSTACKFRAME64 StackFrame,
+	LPVOID ContextRecord,
+	PREAD_PROCESS_MEMORY_ROUTINE ReadMemoryRoutine,
+	PFUNCTION_TABLE_ACCESS_ROUTINE FunctionTableAccessRoutine,
+	PGET_MODULE_BASE_ROUTINE GetModuleBaseRoutine,
+	PTRANSLATE_ADDRESS_ROUTINE TranslateAddress);
+#endif
+
 // This static class can load, unload and use dbghelp.dll. Is thread-safe.
 // Internally it must not use new and delete because it can be created during game memory initialization.
 
@@ -108,8 +183,8 @@ public:
 		LPSTACKFRAME64 StackFrame,
 		LPVOID ContextRecord,
 		PREAD_PROCESS_MEMORY_ROUTINE ReadMemoryRoutine,
-		PFUNCTION_TABLE_ACCESS_ROUTINE FunctionTableAccessRoutine,
-		PGET_MODULE_BASE_ROUTINE GetModuleBaseRoutine,
+		LPVOID FunctionTableAccessRoutine,
+		LPVOID GetModuleBaseRoutine,
 		PTRANSLATE_ADDRESS_ROUTINE TranslateAddress);
 
 #ifdef RTS_ENABLE_CRASHDUMP
@@ -126,49 +201,6 @@ public:
 private:
 
 	static void freeResources();
-
-	typedef BOOL (WINAPI *SymInitialize_t) (
-		HANDLE hProcess,
-		LPSTR UserSearchPath,
-		BOOL fInvadeProcess);
-
-	typedef BOOL (WINAPI *SymCleanup_t) (
-		HANDLE hProcess);
-
-	typedef BOOL (WINAPI *SymLoadModule_t) (
-		HANDLE hProcess,
-		HANDLE hFile,
-		LPSTR ImageName,
-		LPSTR ModuleName,
-		DWORD64 BaseOfDll,
-		DWORD SizeOfDll);
-
-	typedef DWORD64 (WINAPI *SymGetModuleBase_t) (
-		HANDLE hProcess,
-		DWORD64 dwAddr);
-
-	typedef BOOL (WINAPI *SymUnloadModule_t) (
-		HANDLE hProcess,
-		DWORD64 BaseOfDll);
-
-	typedef BOOL (WINAPI *SymGetSymFromAddr_t) (
-		HANDLE hProcess,
-		DWORD64 Address,
-		PDWORD64 Displacement,
-		PIMAGEHLP_SYMBOL64 Symbol);
-
-	typedef BOOL (WINAPI* SymGetLineFromAddr_t) (
-		HANDLE hProcess,
-		DWORD64 dwAddr,
-		PDWORD64 pdwDisplacement,
-		PIMAGEHLP_LINE64 Line);
-
-	typedef DWORD (WINAPI *SymSetOptions_t) (
-		DWORD SymOptions);
-
-	typedef LPVOID (WINAPI *SymFunctionTableAccess_t) (
-		HANDLE hProcess,
-		DWORD64 AddrBase);
 
 	typedef BOOL (WINAPI *StackWalk_t) (
 		DWORD MachineType,

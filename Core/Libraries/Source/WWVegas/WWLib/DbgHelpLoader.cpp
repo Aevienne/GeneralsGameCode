@@ -115,12 +115,20 @@ bool DbgHelpLoader::load()
 	Inst->m_symCleanup = reinterpret_cast<SymCleanup_t>(::GetProcAddress(Inst->m_dllModule, "SymCleanup"));
 	Inst->m_symLoadModule = reinterpret_cast<SymLoadModule_t>(::GetProcAddress(Inst->m_dllModule, "SymLoadModule64"));
 	Inst->m_symUnloadModule = reinterpret_cast<SymUnloadModule_t>(::GetProcAddress(Inst->m_dllModule, "SymUnloadModule64"));
+#ifdef _WIN64
 	Inst->m_symGetModuleBase = reinterpret_cast<SymGetModuleBase_t>(::GetProcAddress(Inst->m_dllModule, "SymGetModuleBase64"));
 	Inst->m_symGetSymFromAddr = reinterpret_cast<SymGetSymFromAddr_t>(::GetProcAddress(Inst->m_dllModule, "SymGetSymFromAddr64"));
 	Inst->m_symGetLineFromAddr = reinterpret_cast<SymGetLineFromAddr_t>(::GetProcAddress(Inst->m_dllModule, "SymGetLineFromAddr64"));
-	Inst->m_symSetOptions = reinterpret_cast<SymSetOptions_t>(::GetProcAddress(Inst->m_dllModule, "SymSetOptions"));
 	Inst->m_symFunctionTableAccess = reinterpret_cast<SymFunctionTableAccess_t>(::GetProcAddress(Inst->m_dllModule, "SymFunctionTableAccess64"));
 	Inst->m_stackWalk = reinterpret_cast<StackWalk_t>(::GetProcAddress(Inst->m_dllModule, "StackWalk64"));
+#else
+	Inst->m_symGetModuleBase = reinterpret_cast<SymGetModuleBase_t>(::GetProcAddress(Inst->m_dllModule, "SymGetModuleBase"));
+	Inst->m_symGetSymFromAddr = reinterpret_cast<SymGetSymFromAddr_t>(::GetProcAddress(Inst->m_dllModule, "SymGetSymFromAddr"));
+	Inst->m_symGetLineFromAddr = reinterpret_cast<SymGetLineFromAddr_t>(::GetProcAddress(Inst->m_dllModule, "SymGetLineFromAddr"));
+	Inst->m_symFunctionTableAccess = reinterpret_cast<SymFunctionTableAccess_t>(::GetProcAddress(Inst->m_dllModule, "SymFunctionTableAccess"));
+	Inst->m_stackWalk = reinterpret_cast<StackWalk_t>(::GetProcAddress(Inst->m_dllModule, "StackWalk"));
+#endif
+	Inst->m_symSetOptions = reinterpret_cast<SymSetOptions_t>(::GetProcAddress(Inst->m_dllModule, "SymSetOptions"));
 #ifdef RTS_ENABLE_CRASHDUMP
 	Inst->m_miniDumpWriteDump = reinterpret_cast<MiniDumpWriteDump_t>(::GetProcAddress(Inst->m_dllModule, "MiniDumpWriteDump"));
 #endif
@@ -330,14 +338,18 @@ BOOL DbgHelpLoader::stackWalk(
 	LPSTACKFRAME64 StackFrame,
 	LPVOID ContextRecord,
 	PREAD_PROCESS_MEMORY_ROUTINE ReadMemoryRoutine,
-	PFUNCTION_TABLE_ACCESS_ROUTINE FunctionTableAccessRoutine,
-	PGET_MODULE_BASE_ROUTINE GetModuleBaseRoutine,
+	LPVOID FunctionTableAccessRoutine,
+	LPVOID GetModuleBaseRoutine,
 	PTRANSLATE_ADDRESS_ROUTINE TranslateAddress)
 {
 	CriticalSectionClass::LockClass lock(CriticalSection);
 
 	if (Inst != nullptr && Inst->m_stackWalk)
-		return Inst->m_stackWalk(MachineType, hProcess, hThread, StackFrame, ContextRecord, ReadMemoryRoutine, FunctionTableAccessRoutine, GetModuleBaseRoutine, TranslateAddress);
+#ifdef _WIN64
+		return Inst->m_stackWalk(MachineType, hProcess, hThread, StackFrame, ContextRecord, ReadMemoryRoutine, (PFUNCTION_TABLE_ACCESS_ROUTINE64)FunctionTableAccessRoutine, (PGET_MODULE_BASE_ROUTINE64)GetModuleBaseRoutine, TranslateAddress);
+#else
+		return Inst->m_stackWalk(MachineType, hProcess, hThread, StackFrame, ContextRecord, ReadMemoryRoutine, (PFUNCTION_TABLE_ACCESS_ROUTINE)FunctionTableAccessRoutine, (PGET_MODULE_BASE_ROUTINE)GetModuleBaseRoutine, TranslateAddress);
+#endif
 
 	return FALSE;
 }

@@ -1011,6 +1011,18 @@ Int parseNoFPSLimit(char *args[], int num)
 	return 1;
 }
 
+Int parseVSync(char *args[], int num)
+{
+	TheWritableGlobalData->m_useVSync = true;
+	return 1;
+}
+
+Int parseNoVSync(char *args[], int num)
+{
+	TheWritableGlobalData->m_useVSync = false;
+	return 1;
+}
+
 Int parseDumpAssetUsage(char *args[], int num)
 {
 	TheWritableGlobalData->m_dumpAssetUsage = true;
@@ -1279,6 +1291,8 @@ static CommandLineParam paramsForEngineInit[] =
 	{ "-seed", parseSeed },
 	{ "-noagpfix", parseIncrAGPBuf },
 	{ "-noFPSLimit", parseNoFPSLimit },
+	{ "-vsync", parseVSync },
+	{ "-novsync", parseNoVSync },
 	{ "-dumpAssetUsage", parseDumpAssetUsage },
 	{ "-jumpToFrame", parseJumpToFrame },
 	{ "-updateImages", parseUpdateImages },

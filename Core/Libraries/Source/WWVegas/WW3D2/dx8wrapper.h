@@ -272,6 +272,7 @@ public:
 
 	static bool Init(void * hwnd, bool lite = false);
 	static void Shutdown();
+	static void SetVSync(bool vsync);
 
 	static void SetCleanupHook(DX8_CleanupHook *pCleanupHook) {m_pCleanupHook = pCleanupHook;};
 	/*
@@ -645,6 +646,7 @@ protected:
 	static int								BitDepth;
 	static int								TextureBitDepth;
 	static bool								IsWindowed;
+	static bool								m_useVSync;
 	static D3DFORMAT					DisplayFormat;
 	static D3DMULTISAMPLE_TYPE	MultiSampleAntiAliasing;
 

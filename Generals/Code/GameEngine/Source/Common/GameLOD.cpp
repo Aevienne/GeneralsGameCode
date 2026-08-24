@@ -102,7 +102,7 @@ StaticGameLODInfo::StaticGameLODInfo()
 	m_useTreeSway=TRUE;
 	m_useEmissiveNightMaterials=TRUE;
 	m_textureReduction = 0;	//none
-	m_useFpsLimit = TRUE;
+	m_useFpsLimit = FALSE;
 	m_enableDynamicLOD = TRUE;
 	m_useTrees = TRUE;
 }

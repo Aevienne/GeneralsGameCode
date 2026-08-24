@@ -113,6 +113,7 @@ public:
 	Bool m_useDrawModuleLOD;
 	Bool m_useHeatEffects;
 	Bool m_useFpsLimit;
+	Bool m_useVSync;
 	Bool m_dumpAssetUsage;
 	Int m_framesPerSecondLimit;
 	Int	m_chipSetType;	///<See W3DShaderManager::ChipsetType for options

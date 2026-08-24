@@ -70,6 +70,9 @@
 #include "render2d.h"
 #include "sortingrenderer.h"
 #include "shattersystem.h"
+
+bool DX8Wrapper::m_useVSync = false;
+void DX8Wrapper::SetVSync(bool vsync) { m_useVSync = vsync; }
 #include "light.h"
 #include "assetmgr.h"
 #include "textureloader.h"
@@ -992,7 +995,10 @@ bool DX8Wrapper::Set_Render_Device(int dev, int width, int height, int bits, int
 	_PresentParameters.EnableAutoDepthStencil = TRUE;				// Driver will attempt to match Z-buffer depth
 	_PresentParameters.Flags=0;											// We're not going to lock the backbuffer
 
-	_PresentParameters.FullScreen_PresentationInterval = D3DPRESENT_INTERVAL_DEFAULT;
+	if (m_useVSync)
+		_PresentParameters.FullScreen_PresentationInterval = D3DPRESENT_INTERVAL_ONE;
+	else
+		_PresentParameters.FullScreen_PresentationInterval = D3DPRESENT_INTERVAL_IMMEDIATE;
 	_PresentParameters.FullScreen_RefreshRateInHz = D3DPRESENT_RATE_DEFAULT;
 
 	/*
@@ -3592,7 +3598,10 @@ DX8Wrapper::Create_Additional_Swap_Chain (HWND render_window)
 	params.BackBufferFormat						= _PresentParameters.BackBufferFormat;
 	params.BackBufferCount						= 1;
 	params.MultiSampleType						= D3DMULTISAMPLE_NONE;
-	params.SwapEffect								= D3DSWAPEFFECT_COPY_VSYNC;
+	if (m_useVSync)
+		params.SwapEffect							= D3DSWAPEFFECT_COPY_VSYNC;
+	else
+		params.SwapEffect							= D3DSWAPEFFECT_DISCARD;
 	params.hDeviceWindow							= render_window;
 	params.Windowed								= TRUE;
 	params.EnableAutoDepthStencil				= TRUE;

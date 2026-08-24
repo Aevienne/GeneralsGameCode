@@ -389,6 +389,14 @@ void DirectInputMouse::update()
 	POINT p;
 	GetCursorPos( &p );
 	ScreenToClient( ApplicationHWnd, &p );
+	if (TheDisplay) {
+		RECT cr; GetClientRect(ApplicationHWnd, &cr);
+		int cw = cr.right - cr.left; int ch = cr.bottom - cr.top;
+		if (cw > 0 && ch > 0) {
+			p.x = p.x * TheDisplay->getWidth() / cw;
+			p.y = p.y * TheDisplay->getHeight() / ch;
+		}
+	}
 	moveMouse( p.x, p.y, MOUSE_MOVE_ABSOLUTE );
 
 }
