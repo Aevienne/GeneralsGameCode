@@ -1,5 +1,5 @@
 /*
-**	Command & Conquer Generals(tm)
+**	Command & Conquer Generals Zero Hour(tm)
 **	Copyright 2025 Electronic Arts Inc.
 **
 **	This program is free software: you can redistribute it and/or modify
@@ -37,7 +37,7 @@
 //	Prototypes
 //*****************************************************************************
 BOOL InitSymbolInfo();
-void MakeStackTrace(DWORD myeip,DWORD myesp,DWORD myebp, int skipFrames, void (*callback)(const char*));
+void MakeStackTrace(DWORD64 myeip,DWORD64 myesp,DWORD64 myebp, int skipFrames, void (*callback)(const char*));
 void GetFunctionDetails(void *pointer, char*name, char*filename, unsigned int* linenumber, unsigned int* address);
 void WriteStackLine(void*address, void (*callback)(const char*));
 
@@ -45,6 +45,18 @@ void WriteStackLine(void*address, void (*callback)(const char*));
 //	Mis-named globals :-)
 //*****************************************************************************
 static CONTEXT gsContext;
+
+#ifdef _WIN64
+#define STACKDUMP_MACHINE_TYPE IMAGE_FILE_MACHINE_AMD64
+#define STACKDUMP_CONTEXT_PC(ctx) ((ctx)->Rip)
+#define STACKDUMP_CONTEXT_SP(ctx) ((ctx)->Rsp)
+#define STACKDUMP_CONTEXT_BP(ctx) ((ctx)->Rbp)
+#else
+#define STACKDUMP_MACHINE_TYPE IMAGE_FILE_MACHINE_I386
+#define STACKDUMP_CONTEXT_PC(ctx) ((ctx)->Eip)
+#define STACKDUMP_CONTEXT_SP(ctx) ((ctx)->Esp)
+#define STACKDUMP_CONTEXT_BP(ctx) ((ctx)->Ebp)
+#endif
 
 
 //*****************************************************************************
@@ -67,8 +79,13 @@ void StackDump(void (*callback)(const char*))
 	if (!InitSymbolInfo())
 		return;
 
+#ifdef _WIN64
+	DWORD64 myeip,myesp,myebp;
+#else
 	DWORD myeip,myesp,myebp;
+#endif
 
+#if defined(_M_IX86)
 #if defined(_MSC_VER)
 _asm
 {
@@ -80,7 +97,7 @@ MYEIP1:
  mov eax, ebp
  mov dword ptr [myebp] , eax
 }
-#elif (defined(__GNUC__) || defined(__clang__)) && (defined(__i386__) || defined(_M_IX86))
+#elif (defined(__GNUC__) || defined(__clang__))
 	// GCC/Clang inline assembly for x86-32
 	__asm__ __volatile__(
 		"call 1f\n\t"
@@ -91,8 +108,9 @@ MYEIP1:
 		:
 		: "memory"
 	);
+#endif
 #else
-	#error "Unsupported compiler or architecture for register capture"
+	myeip = myesp = myebp = 0;
 #endif
 
 
@@ -102,7 +120,7 @@ MYEIP1:
 
 //*****************************************************************************
 //*****************************************************************************
-void StackDumpFromContext(DWORD eip,DWORD esp,DWORD ebp, void (*callback)(const char*))
+void StackDumpFromContext(DWORD64 eip,DWORD64 esp,DWORD64 ebp, void (*callback)(const char*))
 {
 	if (callback == nullptr)
 	{
@@ -170,9 +188,9 @@ BOOL InitSymbolInfo()
 
 //*****************************************************************************
 //*****************************************************************************
-void MakeStackTrace(DWORD myeip,DWORD myesp,DWORD myebp, int skipFrames, void (*callback)(const char*))
+void MakeStackTrace(DWORD64 myeip,DWORD64 myesp,DWORD64 myebp, int skipFrames, void (*callback)(const char*))
 {
-STACKFRAME      stack_frame;
+STACKFRAME64     stack_frame;
 BOOL            b_ret = TRUE;
 
 HANDLE thread = GetCurrentThread();
@@ -181,7 +199,7 @@ HANDLE process = GetCurrentProcess();
 memset(&gsContext, 0, sizeof(CONTEXT));
 gsContext.ContextFlags = CONTEXT_FULL;
 
-memset(&stack_frame, 0, sizeof(STACKFRAME));
+memset(&stack_frame, 0, sizeof(STACKFRAME64));
 stack_frame.AddrPC.Mode = AddrModeFlat;
 stack_frame.AddrPC.Offset = myeip;
 stack_frame.AddrStack.Mode = AddrModeFlat;
@@ -192,7 +210,7 @@ stack_frame.AddrFrame.Offset = myebp;
 /*
     if(GetThreadContext(thread, &gsContext))
     {
-        memset(&stack_frame, 0, sizeof(STACKFRAME));
+        memset(&stack_frame, 0, sizeof(STACKFRAME64));
         stack_frame.AddrPC.Mode = AddrModeFlat;
         stack_frame.AddrPC.Offset = gsContext.Eip;
         stack_frame.AddrStack.Mode = AddrModeFlat;
@@ -208,7 +226,7 @@ stack_frame.AddrFrame.Offset = myebp;
 			unsigned int skip = skipFrames;
 			while (b_ret&&skip)
 			{
-					b_ret = DbgHelpLoader::stackWalk(      IMAGE_FILE_MACHINE_I386,
+					b_ret = DbgHelpLoader::stackWalk(      STACKDUMP_MACHINE_TYPE,
 											process,
 											thread,
 											&stack_frame,
@@ -224,7 +242,7 @@ stack_frame.AddrFrame.Offset = myebp;
 			while(b_ret&&skip)
 			{
 
-					b_ret = DbgHelpLoader::stackWalk(      IMAGE_FILE_MACHINE_I386,
+					b_ret = DbgHelpLoader::stackWalk(      STACKDUMP_MACHINE_TYPE,
 											process,
 											thread,
 											&stack_frame,
@@ -267,18 +285,18 @@ void GetFunctionDetails(void *pointer, char*name, char*filename, unsigned int* l
 		*address = 0xFFFFFFFF;
 	}
 
-	ULONG displacement = 0;
+	DWORD64 displacement = 0;
 
     HANDLE process = ::GetCurrentProcess();
 
-    char symbol_buffer[512 + sizeof(IMAGEHLP_SYMBOL)];
+    char symbol_buffer[512 + sizeof(IMAGEHLP_SYMBOL64)];
     memset(symbol_buffer, 0, sizeof(symbol_buffer));
 
-    PIMAGEHLP_SYMBOL psymbol = (PIMAGEHLP_SYMBOL)symbol_buffer;
+    PIMAGEHLP_SYMBOL64 psymbol = (PIMAGEHLP_SYMBOL64)symbol_buffer;
     psymbol->SizeOfStruct = sizeof(symbol_buffer);
     psymbol->MaxNameLength = 512;
 
-	if (DbgHelpLoader::symGetSymFromAddr(process, (DWORD) pointer, &displacement, psymbol))
+	if (DbgHelpLoader::symGetSymFromAddr(process, (DWORD64)(DWORD_PTR) pointer, &displacement, psymbol))
 	{
 		if (name)
 		{
@@ -288,11 +306,11 @@ void GetFunctionDetails(void *pointer, char*name, char*filename, unsigned int* l
 
 		// Get line now
 
-		IMAGEHLP_LINE line;
+		IMAGEHLP_LINE64 line;
 		memset(&line,0,sizeof(line));
 		line.SizeOfStruct = sizeof(line);
 
-		if (DbgHelpLoader::symGetLineFromAddr(process, (DWORD) pointer, &displacement, &line))
+		if (DbgHelpLoader::symGetLineFromAddr(process, (DWORD64)(DWORD_PTR) pointer, &displacement, &line))
 		{
 			if (filename)
 			{
@@ -319,7 +337,7 @@ void FillStackAddresses(void**addresses, unsigned int count, unsigned int skip)
 	if (!InitSymbolInfo())
 		return;
 
-	STACKFRAME	stack_frame;
+	STACKFRAME64	stack_frame;
 
 
 	HANDLE thread = GetCurrentThread();
@@ -328,7 +346,12 @@ void FillStackAddresses(void**addresses, unsigned int count, unsigned int skip)
     memset(&gsContext, 0, sizeof(CONTEXT));
     gsContext.ContextFlags = CONTEXT_FULL;
 
+#ifdef _WIN64
+	DWORD64 myeip,myesp,myebp;
+#else
 	DWORD myeip,myesp,myebp;
+#endif
+#if defined(_M_IX86)
 #if defined(_MSC_VER)
 _asm
 {
@@ -341,7 +364,7 @@ MYEIP2:
  mov dword ptr [myebp] , eax
  xor eax,eax
 }
-#elif (defined(__GNUC__) || defined(__clang__)) && (defined(__i386__) || defined(_M_IX86))
+#elif (defined(__GNUC__) || defined(__clang__))
 	// GCC/Clang inline assembly for x86-32
 	__asm__ __volatile__(
 		"call 1f\n\t"
@@ -353,10 +376,11 @@ MYEIP2:
 		:
 		: "eax", "memory"
 	);
-#else
-	#error "Unsupported compiler or architecture for register capture"
 #endif
-memset(&stack_frame, 0, sizeof(STACKFRAME));
+#else
+	myeip = myesp = myebp = 0;
+#endif
+memset(&stack_frame, 0, sizeof(STACKFRAME64));
 stack_frame.AddrPC.Mode = AddrModeFlat;
 stack_frame.AddrPC.Offset = myeip;
 stack_frame.AddrStack.Mode = AddrModeFlat;
@@ -368,7 +392,7 @@ stack_frame.AddrFrame.Offset = myebp;
 /*
     if(GetThreadContext(thread, &gsContext))
     {
-        memset(&stack_frame, 0, sizeof(STACKFRAME));
+        memset(&stack_frame, 0, sizeof(STACKFRAME64));
         stack_frame.AddrPC.Mode = AddrModeFlat;
         stack_frame.AddrPC.Offset = gsContext.Eip;
         stack_frame.AddrStack.Mode = AddrModeFlat;
@@ -383,7 +407,7 @@ stack_frame.AddrFrame.Offset = myebp;
 		// Skip some?
 		while (stillgoing&&skip)
 		{
-			stillgoing = DbgHelpLoader::stackWalk(IMAGE_FILE_MACHINE_I386,
+			stillgoing = DbgHelpLoader::stackWalk(STACKDUMP_MACHINE_TYPE,
 								process,
 								thread,
 								&stack_frame,
@@ -397,7 +421,7 @@ stack_frame.AddrFrame.Offset = myebp;
 
 		while(stillgoing&&count)
 		{
-			stillgoing = DbgHelpLoader::stackWalk(IMAGE_FILE_MACHINE_I386,
+			stillgoing = DbgHelpLoader::stackWalk(STACKDUMP_MACHINE_TYPE,
 								process,
 								thread,
 								&stack_frame,
@@ -589,7 +613,7 @@ void DumpExceptionInfo( unsigned int u, EXCEPTION_POINTERS* e_info )
 	}
 
 	DOUBLE_DEBUG (("\nStack Dump:"));
-	StackDumpFromContext(context->Eip, context->Esp, context->Ebp, nullptr);
+	StackDumpFromContext(STACKDUMP_CONTEXT_PC(context), STACKDUMP_CONTEXT_SP(context), STACKDUMP_CONTEXT_BP(context), nullptr);
 
 	DOUBLE_DEBUG (("\nDetails:"));
 
@@ -598,6 +622,7 @@ void DumpExceptionInfo( unsigned int u, EXCEPTION_POINTERS* e_info )
 	/*
 	** Dump the registers.
 	*/
+#if defined(_M_IX86)
 	DOUBLE_DEBUG ( ( "Eip:%08X\tEsp:%08X\tEbp:%08X", context->Eip, context->Esp, context->Ebp));
 	DOUBLE_DEBUG ( ( "Eax:%08X\tEbx:%08X\tEcx:%08X", context->Eax, context->Ebx, context->Ecx));
 	DOUBLE_DEBUG ( ( "Edx:%08X\tEsi:%08X\tEdi:%08X", context->Edx, context->Esi, context->Edi));
@@ -629,6 +654,9 @@ void DumpExceptionInfo( unsigned int u, EXCEPTION_POINTERS* e_info )
 	}
 
 	DOUBLE_DEBUG ( ( (scrap)));
+#else
+	DOUBLE_DEBUG ( ( "Rip:%016llX\tRsp:%016llX\tRbp:%016llX", (unsigned long long)context->Rip, (unsigned long long)context->Rsp, (unsigned long long)context->Rbp));
+#endif
 	DEBUG_LOG(( "********** END EXCEPTION DUMP ****************" ));
 	DEBUG_LOG_RAW(("\n"));
 }

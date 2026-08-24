@@ -157,6 +157,32 @@
             }
         },
         {
+            "name": "win64",
+            "inherits": "default",
+            "hidden": false,
+            "displayName": "Windows 64bit Release",
+            "architecture": {
+                "value": "x64",
+                "strategy": "external"
+            },
+            "cacheVariables": {
+                "RTS_FLAGS": "/W3"
+            },
+            "vendor": {
+                "jetbrains.com/clion": {
+                    "toolchain": "Visual Studio"
+                }
+            }
+        },
+        {
+            "name": "win64-debug",
+            "inherits": "win64",
+            "displayName": "Windows 64bit Debug",
+            "cacheVariables": {
+                "RTS_BUILD_OPTION_DEBUG": "ON"
+            }
+        },
+        {
             "name": "unix",
             "inherits": "default-vcpkg",
             "hidden": false,
@@ -291,6 +317,20 @@
             "configurePreset": "mingw-w64-i686-profile",
             "displayName": "Build MinGW-w64 32-bit (i686) Profile",
             "description": "Build MinGW-w64 32-bit (i686) Profile"
+        },
+        {
+            "name": "win64",
+            "configurePreset": "win64",
+            "displayName": "Build Windows 64bit Release",
+            "description": "Build Windows 64bit Release",
+            "configuration": "Release"
+        },
+        {
+            "name": "win64-debug",
+            "configurePreset": "win64-debug",
+            "displayName": "Build Windows 64bit Debug",
+            "description": "Build Windows 64bit Debug",
+            "configuration": "Debug"
         }
     ],
     "workflowPresets": [
@@ -486,6 +526,32 @@
                 {
                     "type": "build",
                     "name": "mingw-w64-i686-profile"
+                }
+            ]
+        },
+        {
+            "name": "win64",
+            "steps": [
+                {
+                    "type": "configure",
+                    "name": "win64"
+                },
+                {
+                    "type": "build",
+                    "name": "win64"
+                }
+            ]
+        },
+        {
+            "name": "win64-debug",
+            "steps": [
+                {
+                    "type": "configure",
+                    "name": "win64-debug"
+                },
+                {
+                    "type": "build",
+                    "name": "win64-debug"
                 }
             ]
         }

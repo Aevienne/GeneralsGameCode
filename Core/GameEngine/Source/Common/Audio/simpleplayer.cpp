@@ -469,8 +469,8 @@ HRESULT CSimplePlayer::Play( LPCWSTR pszUrl, DWORD dwSecDuration, HANDLE hComple
     mmr = waveOutOpen( &m_hwo,
                        WAVE_MAPPER,
                        &m_wfx,
-                       (DWORD)WaveProc,
-                       (DWORD)this,
+                       (DWORD_PTR)WaveProc,
+                       (DWORD_PTR)this,
                        CALLBACK_FUNCTION );
     mmr = MMSYSERR_NOERROR;
 
@@ -639,7 +639,7 @@ HRESULT CSimplePlayer::Close()
 
 
 ///////////////////////////////////////////////////////////////////////////////
-void CSimplePlayer::OnWaveOutMsg( UINT uMsg, DWORD dwParam1, DWORD dwParam2 )
+void CSimplePlayer::OnWaveOutMsg( UINT uMsg, DWORD_PTR dwParam1, DWORD_PTR dwParam2 )
 {
     if( WOM_DONE == uMsg )
     {
@@ -663,9 +663,9 @@ void CSimplePlayer::OnWaveOutMsg( UINT uMsg, DWORD dwParam1, DWORD dwParam2 )
 void CALLBACK CSimplePlayer::WaveProc(
                                 HWAVEOUT hwo,
                                 UINT uMsg,
-                                DWORD dwInstance,
-                                DWORD dwParam1,
-                                DWORD dwParam2 )
+                                DWORD_PTR dwInstance,
+                                DWORD_PTR dwParam1,
+                                DWORD_PTR dwParam2 )
 {
     CSimplePlayer *pThis = (CSimplePlayer*)dwInstance;
 

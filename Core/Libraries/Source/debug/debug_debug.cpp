@@ -306,12 +306,14 @@ bool Debug::SkipNext()
   // do not implement this function inline, we do need
   // a valid frame pointer here!
   unsigned help;
-#if defined(_MSC_VER)
+#if defined(_MSC_VER) && defined(_M_IX86)
   _asm
   {
     mov eax,[ebp+4]   // return address
     mov help,eax
   };
+#elif defined(_MSC_VER) && defined(_M_X64)
+  help = (unsigned)(uintptr_t)_ReturnAddress();
 #elif (defined(__GNUC__) || defined(__clang__)) && (defined(__i386__) || defined(_M_IX86))
   // GCC/Clang inline assembly for x86-32
   __asm__ __volatile__(
@@ -434,8 +436,10 @@ bool Debug::AssertDone()
           }
           break;
         case IDRETRY:
-#if defined(_MSC_VER)
+#if defined(_MSC_VER) && defined(_M_IX86)
           _asm int 0x03
+#elif defined(_MSC_VER) && defined(_M_X64)
+          __debugbreak();
 #elif defined(__GNUC__)
           __builtin_trap();
 #else

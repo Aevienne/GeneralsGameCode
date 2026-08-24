@@ -1,5 +1,5 @@
 /*
-**	Command & Conquer Generals(tm)
+**	Command & Conquer Generals Zero Hour(tm)
 **	Copyright 2025 Electronic Arts Inc.
 **
 **	This program is free software: you can redistribute it and/or modify
@@ -35,7 +35,7 @@ void StackDump(void (*callback)(const char*));
 
 // Writes a stackdump (provide a callback : gets called per line)
 // If callback is nullptr then will write using OuputDebugString
-void StackDumpFromContext(DWORD eip,DWORD esp,DWORD ebp, void (*callback)(const char*));
+void StackDumpFromContext(DWORD64 eip,DWORD64 esp,DWORD64 ebp, void (*callback)(const char*));
 
 // Gets count* addresses from the current stack
 void FillStackAddresses(void**addresses, unsigned int count, unsigned int skip = 0);

@@ -182,6 +182,9 @@ static DynamicVectorClass<RenderDeviceDescClass>	_RenderDeviceDescriptionTable;
 typedef IDirect3D8* (WINAPI *Direct3DCreate8Type) (UINT SDKVersion);
 Direct3DCreate8Type	Direct3DCreate8Ptr = nullptr;
 HINSTANCE D3D8Lib = nullptr;
+#ifdef _WIN64
+extern "C" IDirect3D8* WINAPI Direct3DCreate8(UINT SDKVersion);
+#endif
 
 DX8_CleanupHook	 *DX8Wrapper::m_pCleanupHook=nullptr;
 #ifdef EXTENDED_STATS
@@ -292,12 +295,16 @@ bool DX8Wrapper::Init(void * hwnd, bool lite)
 	Invalidate_Cached_Render_States();
 
 	if (!lite) {
+#ifdef _WIN64
+		Direct3DCreate8Ptr = Direct3DCreate8;
+#else
 		D3D8Lib = LoadLibrary("D3D8.DLL");
 
 		if (D3D8Lib == nullptr) return false;	// Return false at this point if init failed
 
 		Direct3DCreate8Ptr = (Direct3DCreate8Type) GetProcAddress(D3D8Lib, "Direct3DCreate8");
 		if (Direct3DCreate8Ptr == nullptr) return false;
+#endif
 
 		/*
 		** Create the D3D interface object
@@ -886,7 +893,7 @@ void DX8Wrapper::Resize_And_Position_Window()
 		rect.top = 0;
 		rect.right = ResolutionWidth;
 		rect.bottom = ResolutionHeight;
-		DWORD dwstyle = ::GetWindowLong (_Hwnd, GWL_STYLE);
+		DWORD dwstyle = (DWORD)::GetWindowLongPtr (_Hwnd, GWL_STYLE);
 		AdjustWindowRect (&rect, dwstyle, FALSE);
 		int width = rect.right-rect.left;
 		int height = rect.bottom-rect.top;

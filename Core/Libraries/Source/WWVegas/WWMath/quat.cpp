@@ -250,7 +250,7 @@ Quaternion Axis_To_Quat(const Vector3 &a, float phi)
  *   02/28/1997 GH  : Created.                                                                 *
  *=============================================================================================*/
 
-#if 0
+#if defined(_MSC_VER) && defined(_M_IX86)
 #pragma warning (disable : 4725)
 
 #define ARC_TABLE_SIZE_MASK 1023

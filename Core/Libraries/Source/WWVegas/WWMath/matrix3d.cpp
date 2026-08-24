@@ -687,6 +687,7 @@ void Matrix3D::Copy_3x3_Matrix(float matrix[3][3])
  *=============================================================================================*/
 //void print_matrix(const Matrix3D & m);
 
+#if !defined(_MSC_VER) || !defined(_M_IX86)
 void Matrix3D::Multiply(const Matrix3D & A,const Matrix3D & B,Matrix3D * set_res)
 {
 	assert(set_res != nullptr);
@@ -742,8 +743,7 @@ void Matrix3D::Multiply(const Matrix3D & A,const Matrix3D & B,Matrix3D * set_res
 	set_res->mul(*Aptr, B);
 #endif
 }
-
-#if 0
+#else
 void Matrix3D::Multiply(const Matrix3D & A,const Matrix3D & B,Matrix3D * set_res)
 {
 	assert(set_res != nullptr);

@@ -21,6 +21,11 @@ set(DEBUG_SRC
     "internal.h"
 )
 
+if(CMAKE_SIZEOF_VOID_P EQUAL 8)
+    list(REMOVE_ITEM DEBUG_SRC "debug_except.cpp" "debug_stack.cpp")
+    list(APPEND DEBUG_SRC "debug_except_x64_stub.cpp" "debug_stack_x64_stub.cpp")
+endif()
+
 add_library(core_debug STATIC)
 
 target_sources(core_debug PRIVATE ${DEBUG_SRC})

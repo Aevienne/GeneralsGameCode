@@ -933,7 +933,11 @@ void WaterRenderObjClass::ReAcquireResources()
 			mul r1.rgb, r1, v0.a\n\
 			+mul r0.a, r0, t3\n\
 			add r0.rgb, r0, r1\n";
+#ifdef _WIN64
+		hr = E_FAIL;
+#else
 		hr = D3DXAssembleShader( shader, strlen(shader), 0, nullptr, &compiledShader, nullptr);
+#endif
 		if (hr==0) {
 			hr = 	DX8Wrapper::_Get_D3D_Device8()->CreatePixelShader((DWORD*)compiledShader->GetBufferPointer(), &m_riverWaterPixelShader);
 			compiledShader->Release();
@@ -946,7 +950,11 @@ void WaterRenderObjClass::ReAcquireResources()
 			mul r0,v0,t0 ; blend vertex color into t0. \n\
 			mul r1.rgb,t2,c0 ; reduce t2 (environment mapped reflection) by constant\n\
 			add r0.rgb, r0, r1";
+#ifdef _WIN64
+		hr = E_FAIL;
+#else
 		hr = D3DXAssembleShader( shader, strlen(shader), 0, nullptr, &compiledShader, nullptr);
+#endif
 		if (hr==0) {
 			hr = 	DX8Wrapper::_Get_D3D_Device8()->CreatePixelShader((DWORD*)compiledShader->GetBufferPointer(), &m_waterPixelShader);
 			compiledShader->Release();
@@ -961,7 +969,11 @@ void WaterRenderObjClass::ReAcquireResources()
 			mad r0.rgb, t1, t2, r0	; blend sparkles and noise \n\
 			mul r0.rgb, r0, t3 ; blend in black shroud \n\
 			;\n";
+#ifdef _WIN64
+		hr = E_FAIL;
+#else
 		hr = D3DXAssembleShader( shader, strlen(shader), 0, nullptr, &compiledShader, nullptr);
+#endif
 		if (hr==0) {
 			hr = 	DX8Wrapper::_Get_D3D_Device8()->CreatePixelShader((DWORD*)compiledShader->GetBufferPointer(), &m_trapezoidWaterPixelShader);
 			compiledShader->Release();
