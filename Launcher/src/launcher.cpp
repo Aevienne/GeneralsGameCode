@@ -31,11 +31,12 @@ static std::wstring Join(const std::wstring& dir, const std::wstring& file) {
 
 int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR cmdLine, int) {
     std::wstring gameDir = GetExeDir();
-    bool want64 = Is64BitOS();
+    bool want64 = false;
     bool force32 = wcsstr(cmdLine, L"-x86") != nullptr;
     bool force64 = wcsstr(cmdLine, L"-x64") != nullptr;
-    if (force32) want64 = false;
     if (force64) want64 = true;
+    else if (force32) want64 = false;
+    else want64 = false;
 
     std::wstring exe64a = Join(gameDir, L"x64\\generalszh.exe");
     std::wstring exe64b = Join(gameDir, L"generalszh_x64.exe");
