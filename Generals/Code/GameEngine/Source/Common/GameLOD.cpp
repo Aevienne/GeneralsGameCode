@@ -309,6 +309,10 @@ void GameLODManager::init()
 	//have all settings already applied).
 	refreshCustomStaticLODLevel();
 
+	for (Int i = 0; i < STATIC_GAME_LOD_COUNT; ++i) {
+		m_staticGameLODInfo[i].m_useFpsLimit = FALSE;
+	}
+
 	//Override with user preferences
 	OptionPreferences optionPref;
 

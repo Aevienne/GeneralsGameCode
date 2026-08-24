@@ -355,14 +355,7 @@ CursorCaptureMode OptionPreferences::getCursorCaptureMode() const
 
 Bool OptionPreferences::getScreenEdgeScrollEnabledInWindowedApp() const
 {
-	OptionPreferences::const_iterator it = find("ScreenEdgeScrollEnabledInWindowedApp");
-	if (it == end())
-		return (ScreenEdgeScrollMode_Default & ScreenEdgeScrollMode_EnabledInWindowedApp) != 0;
-
-	if (stricmp(it->second.str(), "yes") == 0)
-		return TRUE;
-
-	return FALSE;
+	return TRUE;
 }
 
 Bool OptionPreferences::getScreenEdgeScrollEnabledInFullscreenApp() const

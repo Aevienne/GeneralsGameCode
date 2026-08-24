@@ -69,7 +69,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR cmdLine, int) {
     } else {
         args = L"\"";
         args += target;
-        args += L"\" -win";
+        args += L"\" -win -noFPSLimit";
     }
 
     STARTUPINFOW si{}; si.cb = sizeof(si);
