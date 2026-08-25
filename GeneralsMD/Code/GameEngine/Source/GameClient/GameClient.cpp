@@ -29,8 +29,6 @@
 
 // SYSTEM INCLUDES ////////////////////////////////////////////////////////////
 #include "PreRTS.h"	// This must go first in EVERY cpp file in the GameEngine
-#include "Common/JobSystem.h"
-#include <vector>
 #include "GameClient/GameClient.h"
 
 // USER INCLUDES //////////////////////////////////////////////////////////////
@@ -633,96 +631,54 @@ void GameClient::update()
 
 
 		// call the update for all client drawables
-		std::vector<Drawable*> draws;
-		for (Drawable* d = firstDrawable(); d; d = d->getNextDrawable()) {
-			d->m_pendingDestroy = false;
-			draws.push_back(d);
-		}
-		if (TheJobSystem && TheJobSystem->isActive() && draws.size() > 64) {
-			TheJobSystem->parallelFor((int)draws.size(), [&](int i){
-				Drawable* draw = draws[i];
-#if ENABLE_CONFIGURABLE_SHROUD
-				if (TheGlobalData->m_shroudOn)
-#else
-				if (true)
-#endif
-				{
-					Object *object=draw->getObject();
-					if (object)
-					{
-						if (TheGhostObjectManager->trackAllPlayers())
-						{
-							if (object->hasGhostObject())
-							{
-								Int *playerIndex = nonLocalPlayerIndices;
-								Int *const playerIndexEnd = nonLocalPlayerIndices + numNonLocalPlayers;
-								for (; playerIndex < playerIndexEnd; ++playerIndex)
-								{
-									object->getShroudedStatus(*playerIndex);
-								}
-							}
-						}
-						ObjectShroudStatus ss=object->getShroudedStatus(localPlayerIndex);
-						if (ss >= OBJECTSHROUD_FOGGED && draw->getShroudClearFrame() != InvalidShroudClearFrame) {
-							UnsignedInt limit = 2*LOGICFRAMES_PER_SECOND;
-							if (object->isEffectivelyDead()) {
-								limit += 3*LOGICFRAMES_PER_SECOND;
-							}
-							if (TheGameLogic->getFrame() < limit + draw->getShroudClearFrame()) {
-								ss = OBJECTSHROUD_CLEAR;
-							}
-						}
-						draw->setFullyObscuredByShroud(ss >= OBJECTSHROUD_FOGGED);
-					}
-				}
-			});
-		} else {
-			for (Drawable* draw : draws) {
-#if ENABLE_CONFIGURABLE_SHROUD
-				if (TheGlobalData->m_shroudOn)
-#else
-				if (true)
-#endif
-				{
-					Object *object=draw->getObject();
-					if (object)
-					{
-						if (TheGhostObjectManager->trackAllPlayers())
-						{
-							if (object->hasGhostObject())
-							{
-								Int *playerIndex = nonLocalPlayerIndices;
-								Int *const playerIndexEnd = nonLocalPlayerIndices + numNonLocalPlayers;
-								for (; playerIndex < playerIndexEnd; ++playerIndex)
-								{
-									object->getShroudedStatus(*playerIndex);
-								}
-							}
-						}
-						ObjectShroudStatus ss=object->getShroudedStatus(localPlayerIndex);
-						if (ss >= OBJECTSHROUD_FOGGED && draw->getShroudClearFrame() != InvalidShroudClearFrame) {
-							UnsignedInt limit = 2*LOGICFRAMES_PER_SECOND;
-							if (object->isEffectivelyDead()) {
-								limit += 3*LOGICFRAMES_PER_SECOND;
-							}
-							if (TheGameLogic->getFrame() < limit + draw->getShroudClearFrame()) {
-								ss = OBJECTSHROUD_CLEAR;
-							}
-						}
-						draw->setFullyObscuredByShroud(ss >= OBJECTSHROUD_FOGGED);
-					}
-				}
-			}
-		}
 		Drawable* draw = firstDrawable();
 		while (draw)
-		{
+		{	// update() could free the Drawable, so go ahead and grab 'next'
 			Drawable* next = draw->getNextDrawable();
-			if (draw->m_pendingDestroy) {
-				destroyDrawable(draw);
-			} else {
-				draw->updateDrawable();
+#if ENABLE_CONFIGURABLE_SHROUD
+			if (TheGlobalData->m_shroudOn)
+#else
+			if (true)
+#endif
+			{
+				//immobile objects need to take snapshots whenever they become fogged
+				//so need to refresh their status.  We can't rely on external calls
+				//to getShroudStatus() because they are only made for visible on-screen
+				//objects.
+				Object *object=draw->getObject();
+				if (object)
+				{
+					if (TheGhostObjectManager->trackAllPlayers())
+					{
+						// TheSuperHackers @info Update the shrouded status for all objects
+						// that own a ghost object for all non local players. This is costly.
+						if (object->hasGhostObject())
+						{
+							Int *playerIndex = nonLocalPlayerIndices;
+							Int *const playerIndexEnd = nonLocalPlayerIndices + numNonLocalPlayers;
+							for (; playerIndex < playerIndexEnd; ++playerIndex)
+							{
+								object->getShroudedStatus(*playerIndex);
+							}
+						}
+					}
+
+					ObjectShroudStatus ss=object->getShroudedStatus(localPlayerIndex);
+					if (ss >= OBJECTSHROUD_FOGGED && draw->getShroudClearFrame() != InvalidShroudClearFrame) {
+						UnsignedInt limit = 2*LOGICFRAMES_PER_SECOND;
+						if (object->isEffectivelyDead()) {
+							// extend the time, so we can see the dead plane blow up & crash.
+							limit += 3*LOGICFRAMES_PER_SECOND;
+						}
+						if (TheGameLogic->getFrame() < limit + draw->getShroudClearFrame()) {
+							// It's been less than 2 seconds since we could see them clear, so keep showing them.
+							ss = OBJECTSHROUD_CLEAR;
+						}
+					}
+					draw->setFullyObscuredByShroud(ss >= OBJECTSHROUD_FOGGED);
+				}
 			}
+			draw->updateDrawable();
 			draw = next;
 		}
 	}

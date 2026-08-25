@@ -324,7 +324,7 @@ void TextureLoader::Init()
 	ThumbnailManagerClass::Init();
 
 	_TextureLoadThread.Execute();
-	_TextureLoadThread.Set_Priority(0);
+	_TextureLoadThread.Set_Priority(-4);
 	TextureInactiveOverrideTime = 0;
 }
 
@@ -974,24 +974,28 @@ void TextureLoader::Load_Thumbnail(TextureBaseClass *tc)
 void LoaderThreadClass::Thread_Function()
 {
 	while (running) {
-		TextureLoadTaskClass* batch[8];
-		int count = 0;
-		{
+		// if there are no tasks on the background queue, no need to grab background lock.
+		if (!_BackgroundQueue.Is_Empty()) {
+			// Grab background load so other threads know we could be
+			// loading a texture.
 			FastCriticalSectionClass::LockClass lock(_BackgroundCriticalSection);
-			while (!_BackgroundQueue.Is_Empty() && count < 8) {
-				TextureLoadTaskClass* task = _BackgroundQueue.Pop_Front();
-				if (task) {
-					WWASSERT(task->Get_Type() == TextureLoadTaskClass::TASK_LOAD);
-					WWASSERT(task->Get_State() == TextureLoadTaskClass::STATE_LOAD_BEGUN);
-					batch[count++] = task;
-				}
+
+			// try to remove a task from the background queue. This could fail
+			// if another thread modified the queue between our test above and
+			// grabbing the lock.
+			TextureLoadTaskClass* task = _BackgroundQueue.Pop_Front();
+			if (task) {
+				// verify task is in proper state for background processing.
+				WWASSERT(task->Get_Type() == TextureLoadTaskClass::TASK_LOAD);
+				WWASSERT(task->Get_State() == TextureLoadTaskClass::STATE_LOAD_BEGUN);
+
+				// load mip map levels and return to foreground queue for final step.
+				task->Load();
+				_ForegroundQueue.Push_Back(task);
 			}
 		}
-		for (int i = 0; i < count; ++i) {
-			batch[i]->Load();
-			_ForegroundQueue.Push_Back(batch[i]);
-		}
-		if (count == 0) Switch_Thread();
+
+		Switch_Thread();
 	}
 }
 

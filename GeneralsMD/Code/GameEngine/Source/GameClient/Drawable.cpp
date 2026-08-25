@@ -356,7 +356,6 @@ Drawable::Drawable( const ThingTemplate *thingTemplate, DrawableStatusBits statu
 	m_selected = '\0';
 
 	m_expirationDate = 0;  // 0 == never expires
-	m_pendingDestroy = false;
 
 	m_lastConstructDisplayed = -1.0f;
 	//Fix for the building percent
@@ -1196,7 +1195,7 @@ void Drawable::updateDrawable()
 		if (m_expirationDate != 0 && now >= m_expirationDate)
 		{
 			DEBUG_ASSERTCRASH(obj == nullptr, ("Drawables with Objects should not have expiration dates!"));
-			m_pendingDestroy = true;
+			TheGameClient->destroyDrawable(this);
 			return;
 		}
 	}

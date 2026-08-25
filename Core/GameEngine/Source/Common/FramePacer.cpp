@@ -87,7 +87,26 @@ Bool FramePacer::isFramesPerSecondLimitEnabled() const
 
 Bool FramePacer::isActualFramesPerSecondLimitEnabled() const
 {
-	return FALSE;
+	Bool allowFpsLimit = true;
+
+	if (TheTacticalView != nullptr)
+	{
+		allowFpsLimit &= TheTacticalView->getTimeMultiplier()<=1 && !TheScriptEngine->isTimeFast();
+	}
+
+	if (TheGameLogic != nullptr)
+	{
+#if defined(_ALLOW_DEBUG_CHEATS_IN_RELEASE)
+		allowFpsLimit &= !(!TheGameLogic->isGamePaused() && TheGlobalData->m_TiVOFastMode);
+#else	//always allow this cheat key if we're in a replay game.
+		allowFpsLimit &= !(!TheGameLogic->isGamePaused() && TheGlobalData->m_TiVOFastMode && TheGameLogic->isInReplayGame());
+#endif
+	}
+
+	allowFpsLimit &= TheGlobalData->m_useFpsLimit;
+	allowFpsLimit &= isFramesPerSecondLimitEnabled();
+
+	return allowFpsLimit;
 }
 
 Int FramePacer::getActualFramesPerSecondLimit() const
@@ -174,7 +193,8 @@ Int FramePacer::getActualLogicTimeScaleFps(LogicTimeQueryFlags flags) const
 		return getLogicTimeScaleFps();
 	}
 
-	return LOGICFRAMES_PER_SECOND;
+	// Returns uncapped value to align with the render update as per the original game behavior.
+	return RenderFpsPreset::UncappedFpsValue;
 }
 
 Real FramePacer::getActualLogicTimeScaleRatio(LogicTimeQueryFlags flags) const
@@ -184,9 +204,6 @@ Real FramePacer::getActualLogicTimeScaleRatio(LogicTimeQueryFlags flags) const
 
 Real FramePacer::getActualLogicTimeScaleOverFpsRatio(LogicTimeQueryFlags flags) const
 {
-	if (!isActualFramesPerSecondLimitEnabled())
-		return 1.0f;
-
 	// TheSuperHackers @info Clamps ratio to min 1, because the logic
 	// frame rate is currently capped by the render frame rate.
 	return min(1.0f, (Real)getActualLogicTimeScaleFps(flags) / getUpdateFps());
@@ -194,16 +211,10 @@ Real FramePacer::getActualLogicTimeScaleOverFpsRatio(LogicTimeQueryFlags flags) 
 
 Real FramePacer::getLogicTimeStepSeconds(LogicTimeQueryFlags flags) const
 {
-	if (!isActualFramesPerSecondLimitEnabled())
-		return SECONDS_PER_LOGICFRAME_REAL;
-
 	return SECONDS_PER_LOGICFRAME_REAL * getActualLogicTimeScaleOverFpsRatio(flags);
 }
 
 Real FramePacer::getLogicTimeStepMilliseconds(LogicTimeQueryFlags flags) const
 {
-	if (!isActualFramesPerSecondLimitEnabled())
-		return MSEC_PER_LOGICFRAME_REAL;
-
 	return MSEC_PER_LOGICFRAME_REAL * getActualLogicTimeScaleOverFpsRatio(flags);
 }

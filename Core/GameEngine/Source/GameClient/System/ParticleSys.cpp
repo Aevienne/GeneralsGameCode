@@ -29,10 +29,6 @@
 
 #include "PreRTS.h"	// This must go first in EVERY cpp file in the GameEngine
 
-#include "Common/JobSystem.h"
-#include <vector>
-#include <mutex>
-
 #define DEFINE_PARTICLE_SYSTEM_NAMES
 
 #include "Common/GameState.h"
@@ -3003,30 +2999,16 @@ void ParticleSystemManager::update()
 	m_lastLogicFrameUpdate = TheGameLogic->getFrame();
 
 	//USE_PERF_TIMER(ParticleSystemManager)
-	if (TheJobSystem && TheJobSystem->isActive() && m_allParticleSystemList.size() > 16) {
-		std::vector<ParticleSystem*> systems(m_allParticleSystemList.begin(), m_allParticleSystemList.end());
-		std::vector<ParticleSystem*> dead;
-		std::mutex deadMutex;
-		TheJobSystem->parallelFor((int)systems.size(), [&](int i){
-			ParticleSystem* sys = systems[i];
-			if (!sys->update(m_localPlayerIndex)) {
-				std::lock_guard<std::mutex> lk(deadMutex);
-				dead.push_back(sys);
-			}
-		});
-		for (auto* sys : dead) deleteInstance(sys);
-	} else {
-		ParticleSystemListIt it = m_allParticleSystemList.begin();
-		while( it != m_allParticleSystemList.end() )
-		{
-			// TheSuperHackers @info Must increment the list iterator before potential element erasure from the list.
-			ParticleSystem* sys = *it++;
-			DEBUG_ASSERTCRASH(sys != nullptr, ("ParticleSystemManager::update: ParticleSystem is null"));
+	ParticleSystemListIt it = m_allParticleSystemList.begin();
+	while( it != m_allParticleSystemList.end() )
+	{
+		// TheSuperHackers @info Must increment the list iterator before potential element erasure from the list.
+		ParticleSystem* sys = *it++;
+		DEBUG_ASSERTCRASH(sys != nullptr, ("ParticleSystemManager::update: ParticleSystem is null"));
 
-			if (sys->update(m_localPlayerIndex) == false)
-			{
-				deleteInstance(sys);
-			}
+		if (sys->update(m_localPlayerIndex) == false)
+		{
+			deleteInstance(sys);
 		}
 	}
 

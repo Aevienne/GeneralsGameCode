@@ -679,9 +679,6 @@ private:
 	DrawableStatusBits m_status;		///< status bits (see DrawableStatus enum)
 	UnsignedInt m_tintStatus;				///< tint color status bits (see TintStatus enum)
 	UnsignedInt m_prevTintStatus;///< for edge testing with m_tintStatus
-public:
-	Bool m_pendingDestroy;					///< flag for deferred destruction after parallel update
-private:
 
 	enum FadingMode
 	{
