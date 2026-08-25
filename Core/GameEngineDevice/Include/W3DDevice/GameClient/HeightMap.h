@@ -92,10 +92,6 @@ protected:
 	Int m_extraBlendTilePositionsSize; //<total size of array including unused memory.
 	DX8VertexBufferClass **m_vertexBufferTiles; ///<collection of smaller vertex buffers that make up 1 heightmap
 	VERTEX_FORMAT *m_vertexBufferBackup; ///< In memory copy of the vertex buffer data for quick update of dynamic lighting.
-	DX8VertexBufferClass **m_batchVertexBuffers; ///<merged vertex buffers holding several tiles.
-	DX8IndexBufferClass **m_batchIndexBuffers; ///<index buffers for merged tile batches.
-	Int *m_batchTileCounts; ///<number of tiles in each batch.
-	Int m_numBatches; ///<number of merged tile batches.
 	Int m_originX; ///<  Origin point in the grid.  Slides around.
 	Int m_originY; ///< Origin point in the grid.  Slides around.
 	Int m_desiredDrawWidth; // Regular draw width requested by the view system.
@@ -111,8 +107,6 @@ protected:
 
 	DX8VertexBufferClass *getVertexBufferTile(Int x, Int y);
 	VERTEX_FORMAT *getVertexBufferBackup(Int x, Int y);
-	void syncMergedVertexBuffers(); ///<refresh merged vertex buffers from the tile vertex buffers.
-	void syncMergedTile(Int tileIndex); ///<refresh one tile's vertices in the merged vertex buffer.
 	UnsignedInt doTheDynamicLight(VERTEX_FORMAT *vb, VERTEX_FORMAT *vbMirror, Vector3*light, Vector3*normal, W3DDynamicLight *pLights[], Int numLights);
 	Int getXWithOrigin(Int x);
 	Int getYWithOrigin(Int x);
