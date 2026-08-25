@@ -6215,7 +6215,7 @@ void InGameUI::drawRenderFps(Int &x, Int &y)
 	}
 
 	UnsignedInt renderFpsLimit = 0u;
-	if (TheFramePacer->isActualFramesPerSecondLimitEnabled())
+	if (TheGlobalData->m_useFpsLimit)
 	{
 		renderFpsLimit = (UnsignedInt)TheFramePacer->getFramesPerSecondLimit();
 		if (renderFpsLimit == RenderFpsPreset::UncappedFpsValue)

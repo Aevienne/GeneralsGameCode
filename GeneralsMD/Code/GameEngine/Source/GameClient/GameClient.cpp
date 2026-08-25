@@ -29,8 +29,6 @@
 
 // SYSTEM INCLUDES ////////////////////////////////////////////////////////////
 #include "PreRTS.h"	// This must go first in EVERY cpp file in the GameEngine
-#include "Common/JobSystem.h"
-#include <vector>
 #include "GameClient/GameClient.h"
 
 // USER INCLUDES //////////////////////////////////////////////////////////////
@@ -632,6 +630,7 @@ void GameClient::update()
 		}
 
 
+		// call the update for all client drawables
 		Drawable* draw = firstDrawable();
 		while (draw)
 		{	// update() could free the Drawable, so go ahead and grab 'next'

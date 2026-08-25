@@ -2030,7 +2030,6 @@ void HeightMapRenderObjClass::Render(RenderInfoClass & rinfo)
 		for (j=0; j<m_numVBTilesY; j++)
 			for (i=0; i<m_numVBTilesX; i++)
 			{
-				if (Is_Hidden()) continue;
 				DX8Wrapper::Set_Vertex_Buffer(getVertexBufferTile(i, j));
 #ifdef PRE_TRANSFORM_VERTEX
 				if (m_xformedVertexBuffer && pass==0) {

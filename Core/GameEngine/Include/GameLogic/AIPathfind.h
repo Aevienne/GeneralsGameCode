@@ -34,14 +34,12 @@
 //#include "GameLogic/Locomotor.h"	// no, do not include this, unless you like long recompiles
 #include "GameLogic/LocomotorSet.h"
 #include "GameLogic/GameLogic.h"
-#include <vector>
 
 class Bridge;
 class Object;
 class Weapon;
 class PathfindZoneManager;
 class PathfindCell;
-class AIUpdateInterface;
 
 // How close is close enough when moving.
 
@@ -311,11 +309,6 @@ public:
 	PathfindCell();
 	~PathfindCell();
 
-	// Snapshot copy: copies the persistent cell data (type, flags, zone, etc.)
-	// but not the transient A* info, which is freshly allocated per search.
-	PathfindCell(const PathfindCell &that);
-	PathfindCell &operator=(const PathfindCell &that);
-
 	Bool setTypeAsObstacle( Object *obstacle, Bool isFence, const ICoord2D &pos );				///< flag this cell as an obstacle, from the given one
 	Bool removeObstacle( Object *obstacle );				///< unflag this cell as an obstacle, from the given one
 	void setType( CellType type );	///< set the cell type
@@ -435,23 +428,6 @@ private:
 };
 
 typedef PathfindCell *PathfindCellP;
-
-
-/**
- * A queued async pathfind request.  The A* search runs on a worker thread
- * against a snapshot copy of the grid region, so the live pathfind map is
- * never touched off the main thread.  The result Path is delivered back to
- * the requesting object on the main thread the following frame.
- */
-struct PathfindJob
-{
-	ObjectID m_objID;
-	Coord3D m_from;
-	Coord3D m_to;
-	IRegion2D m_region;
-	std::vector<PathfindCell> m_snapshotCells;
-	Path *m_result;
-};
 
 
 // how close a unit has to be in z to interact with the layer.
@@ -605,11 +581,6 @@ public:
 	void setBridge(Int cellX, Int cellY, Bool bridge);
 	Bool interactsWithBridge(Int cellX, Int cellY) const;
 
-	/// When true, the zone manager runs in snapshot mode: every cell is
-	/// considered passable and every zone collapses to one, so the A* search
-	/// on a worker thread is not gated by zone data that is not snapshotted.
-	void setWorkerMode(Bool b) { m_isWorker = b; }
-
 private:
 	void allocateZones();
 	void freeZones();
@@ -619,7 +590,6 @@ private:
 	ZoneBlock			*m_blockOfZoneBlocks;			///< Zone blocks - Info for hierarchical pathfinding at a "blocky" level.
 	ZoneBlock			**m_zoneBlocks;						///< Zone blocks as a matrix - contains matrix indexing into the map.
 	ICoord2D			m_zoneBlockExtent;				///< Zone block extents. Not the same scale as the pathfind extents.
-	Bool				m_isWorker;							///< Snapshot worker mode (no live zone data).
 
 	UnsignedShort m_maxZone;								///< Max zone used.
 	UnsignedInt		m_nextFrameToCalculateZones;		///< When should I recalculate, next?.
@@ -710,9 +680,6 @@ public:
 	Bool queueForPath(ObjectID id);	 ///< The object wants to request a pathfind, so put it on the list to process.
 	void processPathfindQueue(); ///< Process some or all of the queued pathfinds.
 	void forceMapRecalculation();	///< Force pathfind map recomputation. If region is given, only that area is recomputed
-
-	/// Worker-thread entry point for a queued async pathfind.
-	static void executePathfindJob(PathfindJob *job);
 
 	/** Returns an aircraft path to the goal.  */
 	Path *getAircraftPath( const Object *obj, const Coord3D *to);
@@ -910,11 +877,6 @@ protected:
 
 	bool checkCellOutsideExtents(ICoord2D& cell);
 
-	// Async pathfind support -------------------------------------------------
-	void buildPathfindJob(Object *obj, PathfindJob &job);	///< Snapshot the grid region for obj's request (main thread).
-	void initFromSnapshot(const PathfindJob &job);			///< Point a worker Pathfinder at a snapshot grid (worker thread).
-	void deliverPathfindResults();							///< Deliver last frame's job results, sorted by ObjectID (main thread).
-
 #if defined(RTS_DEBUG)
 	void doDebugIcons() ;
 #endif
@@ -955,10 +917,6 @@ private:
 	Int						m_queuePRHead;
 	Int						m_queuePRTail;
 	Int						m_cumulativeCellsAllocated;
-
-	// Async pathfind queue
-	std::vector<PathfindJob> m_pathfindJobs;		///< Jobs submitted this frame, delivered next frame.
-	Bool						m_isWorker;							///< True when this Pathfinder is a snapshot-backed worker.
 
 #if RTS_ZEROHOUR && RETAIL_COMPATIBLE_CRC
 public:

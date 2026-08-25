@@ -28,9 +28,6 @@
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
 #include "PreRTS.h"	// This must go first in EVERY cpp file in the GameEngine
-#include "Common/JobSystem.h"
-#include <vector>
-#include <mutex>
 
 #define DEFINE_PARTICLE_SYSTEM_NAMES
 
@@ -1792,7 +1789,7 @@ Particle *ParticleSystem::createParticle( const ParticleInfo *info,
 // ------------------------------------------------------------------------------------------------
 const ParticleInfo *ParticleSystem::generateParticleInfo( Int particleNum, Int particleCount )
 {
-	thread_local ParticleInfo info;
+	static ParticleInfo info;
 	if (particleCount == 0) {
 		DEBUG_CRASH(("particleCount must NOT be 0. Set to 1 or greater."));
 		return &info;
@@ -2108,14 +2105,11 @@ Bool ParticleSystem::update( Int localPlayerIndex  )
 	//
 	// Update all particles in the system
 	//
-	std::vector<Particle*> particles;
-	particles.reserve(getParticleCount());
-	for (Particle *p = m_systemParticlesHead; p; p = p->m_systemNext)
-		particles.push_back(p);
-
-	std::vector<Particle*> dead;
-	for (Particle *p : particles)
+	Particle *p = m_systemParticlesHead;
+	Particle *oldParticle;
+	while (p)
 	{
+
 		// apply 'gravity' force
 		if (m_gravity != 0.0f)
 		{
@@ -2127,11 +2121,14 @@ Bool ParticleSystem::update( Int localPlayerIndex  )
 		}
 
 		if (p->update() == false)
-			dead.push_back(p);
+		{
+			oldParticle = p;
+			p = p->m_systemNext;
+			deleteInstance(oldParticle);
+		} else {
+			p = p->m_systemNext;
+		}
 	}
-
-	for (Particle *oldParticle : dead)
-		deleteInstance(oldParticle);
 
 	//
 	// If we have been "destroyed", wait for all of our particles to die off,
@@ -3002,30 +2999,16 @@ void ParticleSystemManager::update()
 	m_lastLogicFrameUpdate = TheGameLogic->getFrame();
 
 	//USE_PERF_TIMER(ParticleSystemManager)
-	if (TheJobSystem && TheJobSystem->isActive() && m_allParticleSystemList.size() > 16) {
-		std::vector<ParticleSystem*> systems(m_allParticleSystemList.begin(), m_allParticleSystemList.end());
-		std::vector<ParticleSystem*> dead;
-		std::mutex deadMutex;
-		TheJobSystem->parallelFor((int)systems.size(), [&](int i){
-			ParticleSystem* sys = systems[i];
-			if (!sys->update(m_localPlayerIndex)) {
-				std::lock_guard<std::mutex> lk(deadMutex);
-				dead.push_back(sys);
-			}
-		});
-		for (auto* sys : dead) deleteInstance(sys);
-	} else {
-		ParticleSystemListIt it = m_allParticleSystemList.begin();
-		while( it != m_allParticleSystemList.end() )
-		{
-			// TheSuperHackers @info Must increment the list iterator before potential element erasure from the list.
-			ParticleSystem* sys = *it++;
-			DEBUG_ASSERTCRASH(sys != nullptr, ("ParticleSystemManager::update: ParticleSystem is null"));
+	ParticleSystemListIt it = m_allParticleSystemList.begin();
+	while( it != m_allParticleSystemList.end() )
+	{
+		// TheSuperHackers @info Must increment the list iterator before potential element erasure from the list.
+		ParticleSystem* sys = *it++;
+		DEBUG_ASSERTCRASH(sys != nullptr, ("ParticleSystemManager::update: ParticleSystem is null"));
 
-			if (sys->update(m_localPlayerIndex) == false)
-			{
-				deleteInstance(sys);
-			}
+		if (sys->update(m_localPlayerIndex) == false)
+		{
+			deleteInstance(sys);
 		}
 	}
 

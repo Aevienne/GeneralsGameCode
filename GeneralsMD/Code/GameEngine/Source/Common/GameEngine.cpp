@@ -33,7 +33,6 @@
 #include "Common/BuildAssistant.h"
 #include "Common/CRCDebug.h"
 #include "Common/FramePacer.h"
-#include "Common/JobSystem.h"
 #include "Common/Radar.h"
 #include "Common/PlayerTemplate.h"
 #include "Common/Team.h"
@@ -261,8 +260,6 @@ GameEngine::~GameEngine()
 	//extern std::vector<std::string>	preloadTextureNamesGlobalHack;
 	//preloadTextureNamesGlobalHack.clear();
 
-	if (TheJobSystem) { TheJobSystem->shutdown(); JobSystem::destroy(); }
-
 	delete TheMapCache;
 	TheMapCache = nullptr;
 
@@ -399,9 +396,6 @@ void GameEngine::init()
 
 		// initialize the random number system
 		InitRandom();
-
-		JobSystem::create();
-		TheJobSystem->init();
 
 		// Create the low-level file system interface
 		TheFileSystem = createFileSystem();
@@ -924,7 +918,6 @@ void GameEngine::update()
 		// TheSuperHackers @info Ignores frozen time because the script engine needs updating in the logic update regardless.
 		if (canUpdateGameLogic(FramePacer::IgnoreFrozenTime))
 		{
-			if (TheJobSystem) TheJobSystem->joinAll();
 			TheGameLogic->UPDATE();
 
 			if (!TheFramePacer->isTimeFrozen())

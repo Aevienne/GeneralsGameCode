@@ -447,8 +447,6 @@ private:
 
 public:
 	void doPathfind( PathfindServicesInterface *pathfinder );
-	/** Install a path computed off-thread by the pathfinder's snapshot worker. */
-	void deliverPath( Path *path );
 	void requestPath( Coord3D *destination, Bool isGoalDestination );	///< Queues a request to pathfind to destination.
 	void requestAttackPath( ObjectID victimID, const Coord3D* victimPos );	///< computes path to attack the current target, returns false if no path
 	void requestApproachPath( Coord3D *destination );	///< computes path to attack the current target, returns false if no path
@@ -637,8 +635,8 @@ public:
 
 	// this is intended for use ONLY by AIFollowPathState.
 	void friend_setCurrentGoalPathIndex( Int index ) { m_nextGoalPathIndex = index; }
-	inline const Coord3D *friend_getRequestedDestination() const { return &m_requestedDestination; }
 #ifdef DEBUG_LOGGING
+	inline const Coord3D *friend_getRequestedDestination() const { return &m_requestedDestination; }
 	inline const Coord3D *friend_getRequestedDestination2() const { return &m_requestedDestination2; }
 #endif
 
