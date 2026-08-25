@@ -23,19 +23,15 @@ public:
     template <typename F>
     void parallelFor(int count, F&& func) {
         if (count <= 0) return;
-        std::atomic<int> next{0};
         int workers = (int)m_workers.size() + 1;
         int chunk = (count + workers - 1) / workers;
         std::atomic<int> done{0};
         for (int w = 0; w < workers; ++w) {
             submit([&, w]{
-                for (;;) {
-                    int start = w * chunk;
-                    int end = std::min(start + chunk, count);
-                    if (start >= end) break;
-                    for (int i = start; i < end; ++i) func(i);
-                    break;
-                }
+                int start = w * chunk;
+                int end = std::min(start + chunk, count);
+                if (start >= end) { done.fetch_add(1); return; }
+                for (int i = start; i < end; ++i) func(i);
                 done.fetch_add(1);
             });
         }
