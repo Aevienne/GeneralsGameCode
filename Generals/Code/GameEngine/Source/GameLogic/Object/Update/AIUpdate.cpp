@@ -467,6 +467,38 @@ void AIUpdateInterface::doPathfind( PathfindServicesInterface *pathfinder )
 #endif
 }
 
+//-------------------------------------------------------------------------------------------------
+/* Install a path that was computed off-thread by the pathfinder's snapshot
+worker.  The line-of-sight optimization is done here on the main thread,
+since it queries the live pathfinder grid. */
+void AIUpdateInterface::deliverPath( Path *path )
+{
+	m_waitingForPath = FALSE;
+	if (path == nullptr) {
+		m_pathTimestamp = TheGameLogic->getFrame();
+		m_blockedFrames = 0;
+		m_isBlockedAndStuck = FALSE;
+		return;
+	}
+	path->optimize(getObject(), m_locomotorSet.getValidSurfaces(), FALSE);
+	destroyPath();
+	m_path = path;
+	setLocomotorGoalPositionOnPath();
+	if (m_isFinalGoal && isDoingGroundMovement()) {
+		TheAI->pathfinder()->updateGoal(getObject(), m_path->getLastNode()->getPosition(),
+			m_path->getLastNode()->getLayer());
+	}
+	if (!getObject()->isKindOf(KINDOF_NO_COLLIDE)) {
+		TheAI->pathfinder()->moveAllies(getObject(), m_path);
+	}
+	m_pathTimestamp = TheGameLogic->getFrame();
+	m_blockedFrames = 0;
+	m_isBlockedAndStuck = FALSE;
+#ifdef SLEEPY_AI
+	wakeUpNow();
+#endif
+}
+
 /* Requests a path to be found.  Note that if it is possible to do it without having to use the
 pathfinder (air units just move point to point) it generates the path immediately.  Otherwise the path
 will be processed when we get to the front of the pathfind queue. jba */

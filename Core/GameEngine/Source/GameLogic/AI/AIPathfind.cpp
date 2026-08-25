@@ -29,6 +29,7 @@
 
 #include "GameLogic/AIPathfind.h"
 
+#include "Common/JobSystem.h"
 #include "Common/PerfTimer.h"
 #include "Common/Player.h"
 #include "Common/CRCDebug.h"
@@ -36,6 +37,9 @@
 #include "Common/LatchRestore.h"
 #include "Common/ThingTemplate.h"
 #include "Common/ThingFactory.h"
+
+#include <algorithm>
+#include <mutex>
 
 #include "GameClient/Line2D.h"
 
@@ -1158,9 +1162,17 @@ void Pathfinder::forceCleanCells()
 /**
  * Allocates a pool of pathfind cell infos.
  */
+static Int s_infoRefCount = 0;
+static std::mutex s_infoMutex;
 void PathfindCellInfo::allocateCellInfos()
 {
-	releaseCellInfos();
+	std::lock_guard<std::mutex> lk(s_infoMutex);
+	if (s_infoArray != nullptr) {
+		// A pool already exists (the live pathfinder).  Refcount it so worker
+		// pathfinders can share the same pool without freeing it underneath us.
+		s_infoRefCount++;
+		return;
+	}
 	s_infoArray = MSGNEW("PathfindCellInfo") PathfindCellInfo[CELL_INFOS_TO_ALLOCATE];	// pool[]ify
 	s_infoArray[CELL_INFOS_TO_ALLOCATE-1].m_pathParent = nullptr;
 	s_infoArray[CELL_INFOS_TO_ALLOCATE-1].m_isFree = true;
@@ -1169,6 +1181,7 @@ void PathfindCellInfo::allocateCellInfos()
 		s_infoArray[i].m_pathParent = &s_infoArray[i+1];
 		s_infoArray[i].m_isFree = true;
 	}
+	s_infoRefCount = 1;
 }
 
 /**
@@ -1176,9 +1189,15 @@ void PathfindCellInfo::allocateCellInfos()
  */
 void PathfindCellInfo::releaseCellInfos()
 {
+	std::lock_guard<std::mutex> lk(s_infoMutex);
 	if (s_infoArray==nullptr) {
 		return; // haven't allocated any yet.
 	}
+	if (s_infoRefCount > 1) {
+		s_infoRefCount--;
+		return; // another pathfinder still uses the pool.
+	}
+	s_infoRefCount = 0;
 	Int count=0;
 	while (s_firstFree) {
 		count++;
@@ -1196,6 +1215,7 @@ void PathfindCellInfo::releaseCellInfos()
  */
 PathfindCellInfo *PathfindCellInfo::getACellInfo(PathfindCell *cell,const ICoord2D &pos)
 {
+	std::lock_guard<std::mutex> lk(s_infoMutex);
 	PathfindCellInfo *info = s_firstFree;
 	if (s_firstFree) {
 		DEBUG_ASSERTCRASH(s_firstFree->m_isFree, ("Should be freed."));
@@ -1227,6 +1247,7 @@ PathfindCellInfo *PathfindCellInfo::getACellInfo(PathfindCell *cell,const ICoord
  */
 void PathfindCellInfo::releaseACellInfo(PathfindCellInfo *theInfo)
 {
+	std::lock_guard<std::mutex> lk(s_infoMutex);
 	DEBUG_ASSERTCRASH(!theInfo->m_isFree, ("Shouldn't be free."));
 	//@ todo -fix this assert on usa04.  jba.
 	//DEBUG_ASSERTCRASH(theInfo->m_obstacleID==0, ("Shouldn't be obstacle."));
@@ -1267,6 +1288,46 @@ PathfindCell::~PathfindCell()
 		warn = false;
 		DEBUG_LOG( ("PathfindCell::~PathfindCell m_info Allocated."));
 	}
+}
+
+/**
+ * Snapshot copy: copies all persistent cell data (type, flags, zone, obstacle
+ * id, ...) that the A* search reads, but not the transient search info.  The
+ * info is allocated fresh on the worker thread when the search runs.
+ */
+PathfindCell::PathfindCell(const PathfindCell &that)
+: m_info(nullptr),
+	m_obstacleID(that.m_obstacleID),
+	m_blockedByAlly(that.m_blockedByAlly),
+	m_obstacleIsFence(that.m_obstacleIsFence),
+	m_obstacleIsTransparent(that.m_obstacleIsTransparent),
+	m_zone(that.m_zone),
+	m_aircraftGoal(that.m_aircraftGoal),
+	m_pinched(that.m_pinched),
+	m_type(that.m_type),
+	m_flags(that.m_flags),
+	m_connectsToLayer(that.m_connectsToLayer),
+	m_layer(that.m_layer)
+{
+}
+
+PathfindCell &PathfindCell::operator=(const PathfindCell &that)
+{
+	if (this != &that) {
+		m_info = nullptr;
+		m_obstacleID = that.m_obstacleID;
+		m_blockedByAlly = that.m_blockedByAlly;
+		m_obstacleIsFence = that.m_obstacleIsFence;
+		m_obstacleIsTransparent = that.m_obstacleIsTransparent;
+		m_zone = that.m_zone;
+		m_aircraftGoal = that.m_aircraftGoal;
+		m_pinched = that.m_pinched;
+		m_type = that.m_type;
+		m_flags = that.m_flags;
+		m_connectsToLayer = that.m_connectsToLayer;
+		m_layer = that.m_layer;
+	}
+	return *this;
 }
 
 /**
@@ -2575,7 +2636,8 @@ m_crusherZones(nullptr),
 m_hierarchicalZones(nullptr),
 m_blockOfZoneBlocks(nullptr),
 m_zoneBlocks(nullptr),
-m_zonesAllocated(0)
+m_zonesAllocated(0),
+m_isWorker(false)
 {
 	m_zoneBlockExtent.x = 0;
 	m_zoneBlockExtent.y = 0;
@@ -3177,7 +3239,8 @@ void PathfindZoneManager::updateZonesForModify(PathfindCell **map, PathfindLayer
 // Clear the passable flags.
 //
 void PathfindZoneManager::clearPassableFlags()
-{	Int blockX;
+{	if (m_isWorker) return;
+	Int blockX;
 	Int blockY;
 	for (blockX = 0; blockX<m_zoneBlockExtent.x; blockX++) {
 		for (blockY = 0; blockY<m_zoneBlockExtent.y; blockY++) {
@@ -3190,7 +3253,8 @@ void PathfindZoneManager::clearPassableFlags()
 // Set the passable flags.
 //
 void PathfindZoneManager::setAllPassable()
-{	Int blockX;
+{	if (m_isWorker) return;
+	Int blockX;
 	Int blockY;
 	for (blockX = 0; blockX<m_zoneBlockExtent.x; blockX++) {
 		for (blockY = 0; blockY<m_zoneBlockExtent.y; blockY++) {
@@ -3204,6 +3268,7 @@ void PathfindZoneManager::setAllPassable()
 //
 void PathfindZoneManager::setPassable(Int cellX, Int cellY, Bool passable)
 {
+	if (m_isWorker) return;
 	Int blockX = cellX/ZONE_BLOCK_SIZE;
 	Int blockY = cellY/ZONE_BLOCK_SIZE;
 
@@ -3223,6 +3288,7 @@ void PathfindZoneManager::setPassable(Int cellX, Int cellY, Bool passable)
 //
 Bool PathfindZoneManager::isPassable(Int cellX, Int cellY) const
 {
+	if (m_isWorker) return true;
 	Int blockX = cellX/ZONE_BLOCK_SIZE;
 	Int blockY = cellY/ZONE_BLOCK_SIZE;
 
@@ -3242,6 +3308,7 @@ Bool PathfindZoneManager::isPassable(Int cellX, Int cellY) const
 //
 Bool PathfindZoneManager::clipIsPassable(Int cellX, Int cellY) const
 {
+	if (m_isWorker) return true;
 	Int blockX = cellX/ZONE_BLOCK_SIZE;
 	Int blockY = cellY/ZONE_BLOCK_SIZE;
 
@@ -3328,6 +3395,7 @@ zoneStorageType PathfindZoneManager::getBlockZone(LocomotorSurfaceTypeMask accep
 //
 zoneStorageType PathfindZoneManager::getEffectiveTerrainZone(zoneStorageType zone) const
 {
+	if (m_isWorker) return zone;
 	return m_hierarchicalZones[m_terrainZones[zone]];
 }
 
@@ -3337,6 +3405,8 @@ zoneStorageType PathfindZoneManager::getEffectiveTerrainZone(zoneStorageType zon
 zoneStorageType PathfindZoneManager::getEffectiveZone( LocomotorSurfaceTypeMask acceptableSurfaces,
 																										Bool crusher, zoneStorageType zone) const
 {
+	// Worker pathfinders run against a snapshot and have no live zone data.
+	if (m_isWorker) return 1;
 	//DEBUG_ASSERTCRASH(zone, ("Zone not set"));
 	if (zone>m_maxZone) {
 		DEBUG_CRASH(("Invalid zone"));
@@ -4056,6 +4126,14 @@ Pathfinder::Pathfinder() :m_map(nullptr)
 
 Pathfinder::~Pathfinder()
 {
+	// Snapshot worker pathfinders own their grid and must free it here; the
+	// live pathfinder's grid is managed by reset()/newMap() instead.
+	if (m_isWorker) {
+		delete [] m_blockOfMapCells;
+		m_blockOfMapCells = nullptr;
+		delete [] m_map;
+		m_map = nullptr;
+	}
 	PathfindCellInfo::releaseCellInfos();
 }
 
@@ -4110,6 +4188,9 @@ void Pathfinder::reset()
 	{
 		m_wallPieces[i] = INVALID_ID;
 	}
+
+	m_pathfindJobs.clear();
+	m_isWorker = false;
 
 	if (TheAI && TheAI->getAiData()) {
 		m_wallHeight = TheAI->getAiData()->m_wallHeight;
@@ -6098,14 +6179,22 @@ void Pathfinder::processPathfindQueue()
 
 	m_cumulativeCellsAllocated = 0;	// Number of pathfind cells examined.
 	Int pathsFound = 0;
-	while (pathsFound < 1 && m_cumulativeCellsAllocated < PATHFIND_CELLS_PER_FRAME &&
-		m_queuePRTail!=m_queuePRHead) {
+
+	// Deliver last frame's async results first.  joinAll() has run before
+	// the GameLogic update, so every job below has completed.
+	deliverPathfindResults();
+
+	// Snapshot the grid and submit a job for every queued path request.
+	// The A* search runs on a worker thread against the snapshot; results are
+	// delivered on the main thread next frame.
+	while (m_queuePRTail!=m_queuePRHead) {
 		Object *obj = TheGameLogic->findObjectByID(m_queuedPathfindRequests[m_queuePRHead]);
 		m_queuedPathfindRequests[m_queuePRHead] = INVALID_ID;
 		if (obj) {
 			AIUpdateInterface *ai = obj->getAIUpdateInterface();
-			if (ai) {
-				ai->doPathfind(this);
+			if (ai && ai->isWaitingForPath()) {
+				m_pathfindJobs.emplace_back();
+				buildPathfindJob(obj, m_pathfindJobs.back());
 				pathsFound++;
 			}
 		}
@@ -6114,6 +6203,20 @@ void Pathfinder::processPathfindQueue()
 			m_queuePRHead = 0;
 		}
 	}
+
+	// Submit now that m_pathfindJobs is fully built, so the vector does not
+	// reallocate while worker threads hold references into it.
+	if (TheJobSystem && TheJobSystem->isActive()) {
+		for (PathfindJob &job : m_pathfindJobs) {
+			TheJobSystem->submit([&job]{ Pathfinder::executePathfindJob(&job); });
+		}
+	} else {
+		// No job system (e.g. tools) - run synchronously.
+		for (PathfindJob &job : m_pathfindJobs) {
+			Pathfinder::executePathfindJob(&job);
+		}
+	}
+
 	if (pathsFound > 0) {
 		PROFILER_PLOT("PathfindCells", (double)m_cumulativeCellsAllocated);
 		PROFILER_PLOT("PathfindPaths", (double)pathsFound);
@@ -6135,6 +6238,123 @@ void Pathfinder::processPathfindQueue()
 	doDebugIcons();
 #endif
 
+}
+
+/**
+ * Builds a PathfindJob for an object's pending path request.  The grid region
+ * around the request (start cell to goal cell, plus a margin) is copied into
+ * the job so the worker never touches the live pathfind map.
+ */
+void Pathfinder::buildPathfindJob(Object *obj, PathfindJob &job)
+{
+	AIUpdateInterface *ai = obj->getAIUpdateInterface();
+	job.m_objID = obj->getID();
+	job.m_result = nullptr;
+	job.m_from = *obj->getPosition();
+	job.m_to = *ai->friend_getRequestedDestination();
+
+	const Int SNAPSHOT_MARGIN = 8;
+	ICoord2D fromCell, toCell;
+	worldToCell(&job.m_from, &fromCell);
+	worldToCell(&job.m_to, &toCell);
+
+	IRegion2D &r = job.m_region;
+	r.lo.x = std::min(fromCell.x, toCell.x) - SNAPSHOT_MARGIN;
+	r.hi.x = std::max(fromCell.x, toCell.x) + SNAPSHOT_MARGIN;
+	r.lo.y = std::min(fromCell.y, toCell.y) - SNAPSHOT_MARGIN;
+	r.hi.y = std::max(fromCell.y, toCell.y) + SNAPSHOT_MARGIN;
+	if (r.lo.x < m_extent.lo.x) r.lo.x = m_extent.lo.x;
+	if (r.lo.y < m_extent.lo.y) r.lo.y = m_extent.lo.y;
+	if (r.hi.x > m_extent.hi.x) r.hi.x = m_extent.hi.x;
+	if (r.hi.y > m_extent.hi.y) r.hi.y = m_extent.hi.y;
+
+	const Int width = r.hi.x - r.lo.x + 1;
+	const Int height = r.hi.y - r.lo.y + 1;
+	job.m_snapshotCells.resize(width * height);
+	for (Int y = r.lo.y; y <= r.hi.y; y++) {
+		for (Int x = r.lo.x; x <= r.hi.x; x++) {
+			job.m_snapshotCells[(y - r.lo.y) * width + (x - r.lo.x)] = *getCell(LAYER_GROUND, x, y);
+		}
+	}
+}
+
+/**
+ * Worker-thread entry point.  Runs the A* search over the job's snapshot grid.
+ */
+void Pathfinder::executePathfindJob(PathfindJob *job)
+{
+	job->m_result = nullptr;
+	Object *obj = TheGameLogic->findObjectByID(job->m_objID);
+	if (obj == nullptr) {
+		return;
+	}
+	AIUpdateInterface *ai = obj->getAIUpdateInterface();
+	if (ai == nullptr) {
+		return;
+	}
+
+	Pathfinder worker;
+	worker.initFromSnapshot(*job);
+	worker.m_ignoreObstacleID = ai->getIgnoredObstacleID();
+	job->m_result = worker.internalFindPath(obj, ai->getLocomotorSet(), &job->m_from, &job->m_to);
+}
+
+/**
+ * Points a freshly constructed worker Pathfinder at a job's snapshot grid.
+ * Coordinates remain absolute (m_map is indexed 0..hi), and the region bounds
+ * keep the A* search inside the snapshotted cells.
+ */
+void Pathfinder::initFromSnapshot(const PathfindJob &job)
+{
+	m_isWorker = true;
+	m_zoneManager.setWorkerMode(true);
+	m_isMapReady = true;
+	m_isTunneling = false;
+	m_ignoreObstacleID = INVALID_ID;
+	m_extent = job.m_region;
+	m_logicalExtent = job.m_region;
+
+	const Int width = m_extent.hi.x + 1;
+	const Int height = m_extent.hi.y + 1;
+	m_blockOfMapCells = MSGNEW("PathfindWorkerCells") PathfindCell[width * height];
+	m_map = MSGNEW("PathfindWorkerCells") PathfindCellP[width];
+	for (Int i = 0; i < width; i++) {
+		m_map[i] = &m_blockOfMapCells[i * height];
+	}
+
+	const Int snapshotWidth = job.m_region.hi.x - job.m_region.lo.x + 1;
+	for (Int y = job.m_region.lo.y; y <= job.m_region.hi.y; y++) {
+		for (Int x = job.m_region.lo.x; x <= job.m_region.hi.x; x++) {
+			m_map[x][y] = job.m_snapshotCells[(y - job.m_region.lo.y) * snapshotWidth + (x - job.m_region.lo.x)];
+		}
+	}
+}
+
+/**
+ * Hands last frame's completed job results to their objects on the main
+ * thread.  Delivery order is deterministic (sorted by ObjectID).
+ */
+void Pathfinder::deliverPathfindResults()
+{
+	if (m_pathfindJobs.empty()) {
+		return;
+	}
+	std::sort(m_pathfindJobs.begin(), m_pathfindJobs.end(),
+		[](const PathfindJob &a, const PathfindJob &b) { return a.m_objID < b.m_objID; });
+
+	for (PathfindJob &job : m_pathfindJobs) {
+		Object *obj = TheGameLogic->findObjectByID(job.m_objID);
+		if (obj) {
+			AIUpdateInterface *ai = obj->getAIUpdateInterface();
+			if (ai && ai->isWaitingForPath()) {
+				ai->deliverPath(job.m_result);
+				job.m_result = nullptr;
+			}
+		}
+		deleteInstance(job.m_result);
+		job.m_result = nullptr;
+	}
+	m_pathfindJobs.clear();
 }
 
 
@@ -9126,7 +9346,11 @@ Path *Pathfinder::buildActualPath( const Object *obj, LocomotorSurfaceTypeMask a
 	prependCells(path, fromPos, goalCell, center);
 
 	// cleanup the path by checking line of sight
-	path->optimize(obj, acceptableSurfaces, blocked);
+	// Snapshot workers skip this: optimize() queries the live pathfinder's
+	// grid, so it runs on the main thread at delivery time instead.
+	if (!m_isWorker) {
+		path->optimize(obj, acceptableSurfaces, blocked);
+	}
 
 #if defined(RTS_DEBUG)
 	if (TheGlobalData->m_debugAI==AI_DEBUG_PATHS)

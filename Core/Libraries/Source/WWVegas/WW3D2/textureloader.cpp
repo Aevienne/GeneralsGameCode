@@ -974,11 +974,11 @@ void TextureLoader::Load_Thumbnail(TextureBaseClass *tc)
 void LoaderThreadClass::Thread_Function()
 {
 	while (running) {
-		TextureLoadTaskClass* batch[8];
+		TextureLoadTaskClass* batch[16];
 		int count = 0;
 		{
 			FastCriticalSectionClass::LockClass lock(_BackgroundCriticalSection);
-			while (!_BackgroundQueue.Is_Empty() && count < 8) {
+			while (!_BackgroundQueue.Is_Empty() && count < 16) {
 				TextureLoadTaskClass* task = _BackgroundQueue.Pop_Front();
 				if (task) {
 					WWASSERT(task->Get_Type() == TextureLoadTaskClass::TASK_LOAD);

@@ -94,6 +94,8 @@
 #define no_OPTIMIZED_HEIGHTMAP_LIGHTING	01
 // Doesn't work well.  jba.
 
+#define MAX_BATCH_TILES 10	//limited by 16 bit vertex and index counts.
+
 HeightMapRenderObjClass *TheHeightMap = nullptr;
 //-----------------------------------------------------------------------------
 //         Private Data
@@ -132,6 +134,24 @@ void HeightMapRenderObjClass::freeIndexVertexBuffers()
 		m_vertexBufferTiles = nullptr;
 	}
 
+	if (m_batchVertexBuffers) {
+		for (int i=0; i<m_numBatches; i++)
+			REF_PTR_RELEASE(m_batchVertexBuffers[i]);
+		delete[] m_batchVertexBuffers;
+		m_batchVertexBuffers = nullptr;
+	}
+
+	if (m_batchIndexBuffers) {
+		for (int i=0; i<m_numBatches; i++)
+			REF_PTR_RELEASE(m_batchIndexBuffers[i]);
+		delete[] m_batchIndexBuffers;
+		m_batchIndexBuffers = nullptr;
+	}
+
+	delete[] m_batchTileCounts;
+	m_batchTileCounts = nullptr;
+	m_numBatches = 0;
+
 	delete[] m_vertexBufferBackup;
 	m_vertexBufferBackup = nullptr;
 
@@ -162,6 +182,41 @@ DX8VertexBufferClass *HeightMapRenderObjClass::getVertexBufferTile(Int x, Int y)
 VERTEX_FORMAT *HeightMapRenderObjClass::getVertexBufferBackup(Int x, Int y)
 {
 	return m_vertexBufferBackup + y*m_numVBTilesX*HEIGHTMAP_VERTEX_NUM + x*HEIGHTMAP_VERTEX_NUM;
+}
+
+//=============================================================================
+void HeightMapRenderObjClass::syncMergedVertexBuffers()
+{
+	if (m_numBatches == 0) return;
+	Int tile=0;
+	for (Int batch=0; batch<m_numBatches; batch++) {
+		DX8VertexBufferClass::WriteLockClass lockMerged(m_batchVertexBuffers[batch]);
+		VERTEX_FORMAT *dest=(VERTEX_FORMAT*)lockMerged.Get_Vertex_Array();
+		for (Int t=0; t<m_batchTileCounts[batch]; t++) {
+			DX8VertexBufferClass::WriteLockClass lockTile(m_vertexBufferTiles[tile]);
+			memcpy(dest, (VERTEX_FORMAT*)lockTile.Get_Vertex_Array(), HEIGHTMAP_VERTEX_NUM*sizeof(VERTEX_FORMAT));
+			dest += HEIGHTMAP_VERTEX_NUM;
+			tile++;
+		}
+	}
+}
+
+//=============================================================================
+void HeightMapRenderObjClass::syncMergedTile(Int tileIndex)
+{
+	if (m_numBatches == 0) return;
+	Int offset=tileIndex;
+	Int batch=0;
+	while (batch<m_numBatches) {
+		if (offset < m_batchTileCounts[batch]) break;
+		offset -= m_batchTileCounts[batch];
+		batch++;
+	}
+	if (batch>=m_numBatches) return;
+	DX8VertexBufferClass::WriteLockClass lockMerged(m_batchVertexBuffers[batch]);
+	VERTEX_FORMAT *dest=(VERTEX_FORMAT*)lockMerged.Get_Vertex_Array()+offset*HEIGHTMAP_VERTEX_NUM;
+	DX8VertexBufferClass::WriteLockClass lockTile(m_vertexBufferTiles[tileIndex]);
+	memcpy(dest, (VERTEX_FORMAT*)lockTile.Get_Vertex_Array(), HEIGHTMAP_VERTEX_NUM*sizeof(VERTEX_FORMAT));
 }
 
 //=============================================================================
@@ -1011,6 +1066,8 @@ Int HeightMapRenderObjClass::updateBlock(Int x0, Int y0, Int x1, Int y1,  WorldH
 		}
 	}
 
+	syncMergedVertexBuffers();
+
 	return 0;
 }
 
@@ -1044,6 +1101,10 @@ m_numVisibleExtraBlendTiles(0),
 m_extraBlendTilePositionsSize(0),
 m_vertexBufferTiles(nullptr),
 m_vertexBufferBackup(nullptr),
+m_batchVertexBuffers(nullptr),
+m_batchIndexBuffers(nullptr),
+m_batchTileCounts(nullptr),
+m_numBatches(0),
 m_originX(0),
 m_originY(0),
 m_desiredDrawWidth(WorldHeightMap::NORMAL_DRAW_WIDTH),
@@ -1276,6 +1337,76 @@ Int HeightMapRenderObjClass::initHeightData(Int x, Int y, WorldHeightMap *pMap, 
 	if (data && needToAllocate && m_treeBuffer != nullptr)
 	{	//requested heightmap different from old one.
 		freeIndexVertexBuffers();
+
+		//Get number of vertex buffers needed to hold current map
+		//First round dimensions to next multiple of VERTEX_BUFFER_TILE_LENGTH since that's our block size
+		m_numVBTilesX=1;
+		for (i=VERTEX_BUFFER_TILE_LENGTH+1; i<x;)
+		{	i+=VERTEX_BUFFER_TILE_LENGTH;
+			m_numVBTilesX++;
+		}
+		m_numVBTilesY=1;
+		for (j=VERTEX_BUFFER_TILE_LENGTH+1; j<y;)
+		{	j+=VERTEX_BUFFER_TILE_LENGTH;
+			m_numVBTilesY++;
+		}
+
+		m_numBlockColumnsInLastVB=(x-1)%VERTEX_BUFFER_TILE_LENGTH;	//right border within last VB
+		m_numBlockRowsInLastVB=(y-1)%VERTEX_BUFFER_TILE_LENGTH;	//bottom border within last VB
+
+		m_numVertexBufferTiles=m_numVBTilesX*m_numVBTilesY;
+		m_x=x;
+		m_y=y;
+
+#ifndef PRE_TRANSFORM_VERTEX
+		//Merge the tile vertex buffers into large batch buffers so all tiles can be drawn
+		//in a few calls.  Each batch is limited by 16 bit vertex and index counts.
+		m_numBatches=(m_numVertexBufferTiles+MAX_BATCH_TILES-1)/MAX_BATCH_TILES;
+		m_batchVertexBuffers = NEW DX8VertexBufferClass*[m_numBatches];
+		m_batchIndexBuffers = NEW DX8IndexBufferClass*[m_numBatches];
+		m_batchTileCounts = NEW Int[m_numBatches];
+		m_indexBuffer = nullptr;
+		for (Int batch=0; batch<m_numBatches; batch++)
+		{
+			Int count=m_numVertexBufferTiles-batch*MAX_BATCH_TILES;
+			if (count>MAX_BATCH_TILES) count=MAX_BATCH_TILES;
+			m_batchTileCounts[batch]=count;
+#ifdef USE_NORMALS
+			m_batchVertexBuffers[batch]=NEW_REF(DX8VertexBufferClass,(DX8_FVF_XYZNUV2,count*HEIGHTMAP_VERTEX_NUM,DX8VertexBufferClass::USAGE_DEFAULT));
+#else
+			m_batchVertexBuffers[batch]=NEW_REF(DX8VertexBufferClass,(DX8_VERTEX_FORMAT,count*HEIGHTMAP_VERTEX_NUM,DX8VertexBufferClass::USAGE_DEFAULT));
+#endif
+			m_batchIndexBuffers[batch]=NEW_REF(DX8IndexBufferClass,(HEIGHTMAP_POLYGON_NUM*count*3));
+
+			// Fill up the batch IB.  Each tile's indices are offset by its vertex offset in the batch.
+			DX8IndexBufferClass::WriteLockClass lockIdxBuffer(m_batchIndexBuffers[batch]);
+			UnsignedShort *ib=lockIdxBuffer.Get_Index_Array();
+			for (Int t=0; t<count; t++)
+			{
+				UnsignedShort base=t*HEIGHTMAP_VERTEX_NUM;
+				for (j=0; j<(VERTEX_BUFFER_TILE_LENGTH*VERTEX_BUFFER_TILE_LENGTH*4); j+=VERTEX_BUFFER_TILE_LENGTH*4)
+				{
+					for (i=j; i<(j+VERTEX_BUFFER_TILE_LENGTH*4); i+=4)	//4 vertices per 2x2 block
+					{
+						ib[0]=base+i;
+						ib[1]=base+i+2;
+						ib[2]=base+i+3;
+
+						ib[3]=base+i;
+						ib[4]=base+i+1;
+						ib[5]=base+i+2;
+
+						ib+=6;	//skip the 6 indices we just filled
+					}
+				}
+			}
+		}
+#else
+		m_numBatches=0;
+		m_batchVertexBuffers=nullptr;
+		m_batchIndexBuffers=nullptr;
+		m_batchTileCounts=nullptr;
+
 		//Create static index buffers.  These will index the vertex buffers holding the map.
 		m_indexBuffer=NEW_REF(DX8IndexBufferClass,(VERTEX_BUFFER_TILE_LENGTH*VERTEX_BUFFER_TILE_LENGTH*2*3));
 
@@ -1298,26 +1429,7 @@ Int HeightMapRenderObjClass::initHeightData(Int x, Int y, WorldHeightMap *pMap, 
 				ib+=6;	//skip the 6 indices we just filled
 			}
 		}
-
-		//Get number of vertex buffers needed to hold current map
-		//First round dimensions to next multiple of VERTEX_BUFFER_TILE_LENGTH since that's our block size
-		m_numVBTilesX=1;
-		for (i=VERTEX_BUFFER_TILE_LENGTH+1; i<x;)
-		{	i+=VERTEX_BUFFER_TILE_LENGTH;
-			m_numVBTilesX++;
-		}
-		m_numVBTilesY=1;
-		for (j=VERTEX_BUFFER_TILE_LENGTH+1; j<y;)
-		{	j+=VERTEX_BUFFER_TILE_LENGTH;
-			m_numVBTilesY++;
-		}
-
-		m_numBlockColumnsInLastVB=(x-1)%VERTEX_BUFFER_TILE_LENGTH;	//right border within last VB
-		m_numBlockRowsInLastVB=(y-1)%VERTEX_BUFFER_TILE_LENGTH;	//bottom border within last VB
-
-		m_numVertexBufferTiles=m_numVBTilesX*m_numVBTilesY;
-		m_x=x;
-		m_y=y;
+#endif
 
 		m_vertexBufferTiles = NEW DX8VertexBufferClass*[m_numVertexBufferTiles];
 		m_vertexBufferBackup = NEW VERTEX_FORMAT [m_numVertexBufferTiles * HEIGHTMAP_VERTEX_NUM];
@@ -1522,6 +1634,7 @@ void HeightMapRenderObjClass::On_Frame_Update()
 				DX8VertexBufferClass *pVB = getVertexBufferTile(i, j);
 				VERTEX_FORMAT *pData = getVertexBufferBackup(i, j);
 				updateVBForLight(pVB, pData, xMin, yMin, xMax, yMax, originX,originY, enabledLights, numDynaLights);
+				syncMergedTile(j*m_numVBTilesX+i);
 			}
 		}
 	}
@@ -1931,7 +2044,8 @@ void HeightMapRenderObjClass::Render(RenderInfoClass & rinfo)
 
 	//Apply the shader and material
 
-	DX8Wrapper::Set_Index_Buffer(m_indexBuffer,0);
+	if (m_numBatches == 0)
+		DX8Wrapper::Set_Index_Buffer(m_indexBuffer,0);
 
 	Bool doMultiPassWireFrame=FALSE;
 
@@ -2027,33 +2141,50 @@ void HeightMapRenderObjClass::Render(RenderInfoClass & rinfo)
 			}
 		}
 
-		for (j=0; j<m_numVBTilesY; j++)
-			for (i=0; i<m_numVBTilesX; i++)
+		#ifndef PRE_TRANSFORM_VERTEX
+		if (m_numBatches > 0)
+		{
+			for (Int batch=0; batch<m_numBatches; batch++)
 			{
-				if (Is_Hidden()) continue;
-				DX8Wrapper::Set_Vertex_Buffer(getVertexBufferTile(i, j));
-#ifdef PRE_TRANSFORM_VERTEX
-				if (m_xformedVertexBuffer && pass==0) {
-					// Note - m_xformedVertexBuffer should only be used for non T&L hardware.  jba.
-					DX8Wrapper::Apply_Render_State_Changes();
-					int code = DX8Wrapper::_Get_D3D_Device8()->ProcessVertices(0, 0, numVertex, m_xformedVertexBuffer[j*m_numVBTilesX+i], 0);
-					::OutputDebugString("did process vertex\n");
+				if (!Is_Hidden())
+				{
+					DX8Wrapper::Set_Vertex_Buffer(m_batchVertexBuffers[batch]);
+					DX8Wrapper::Set_Index_Buffer(m_batchIndexBuffers[batch], 0);
+					DX8Wrapper::Draw_Triangles(0, HEIGHTMAP_POLYGON_NUM*m_batchTileCounts[batch], 0, HEIGHTMAP_VERTEX_NUM*m_batchTileCounts[batch]);
 				}
-				if (m_xformedVertexBuffer) {
-					// Note - m_xformedVertexBuffer should only be used for non T&L hardware.  jba.
-					DX8Wrapper::Apply_Render_State_Changes();
-					DX8Wrapper::_Get_D3D_Device8()->SetStreamSource(
-						0,
-						m_xformedVertexBuffer[j*m_numVBTilesX+i],
-						D3DXGetFVFVertexSize(D3DFVF_XYZRHW |D3DFVF_DIFFUSE|D3DFVF_TEX2));
-					DX8Wrapper::_Get_D3D_Device8()->SetVertexShader(D3DFVF_XYZRHW |D3DFVF_DIFFUSE|D3DFVF_TEX2);
-				}
-#endif
-				if (Is_Hidden() == 0) {
-					DX8Wrapper::Draw_Triangles(0, HEIGHTMAP_POLYGON_NUM, 0, HEIGHTMAP_VERTEX_NUM);
-				}
-
 			}
+		}
+		else
+#endif
+		{
+			for (j=0; j<m_numVBTilesY; j++)
+				for (i=0; i<m_numVBTilesX; i++)
+				{
+					if (Is_Hidden()) continue;
+					DX8Wrapper::Set_Vertex_Buffer(getVertexBufferTile(i, j));
+#ifdef PRE_TRANSFORM_VERTEX
+					if (m_xformedVertexBuffer && pass==0) {
+						// Note - m_xformedVertexBuffer should only be used for non T&L hardware.  jba.
+						DX8Wrapper::Apply_Render_State_Changes();
+						int code = DX8Wrapper::_Get_D3D_Device8()->ProcessVertices(0, 0, numVertex, m_xformedVertexBuffer[j*m_numVBTilesX+i], 0);
+						::OutputDebugString("did process vertex\n");
+					}
+					if (m_xformedVertexBuffer) {
+						// Note - m_xformedVertexBuffer should only be used for non T&L hardware.  jba.
+						DX8Wrapper::Apply_Render_State_Changes();
+						DX8Wrapper::_Get_D3D_Device8()->SetStreamSource(
+							0,
+							m_xformedVertexBuffer[j*m_numVBTilesX+i],
+							D3DXGetFVFVertexSize(D3DFVF_XYZRHW |D3DFVF_DIFFUSE|D3DFVF_TEX2));
+						DX8Wrapper::_Get_D3D_Device8()->SetVertexShader(D3DFVF_XYZRHW |D3DFVF_DIFFUSE|D3DFVF_TEX2);
+					}
+#endif
+					if (Is_Hidden() == 0) {
+						DX8Wrapper::Draw_Triangles(0, HEIGHTMAP_POLYGON_NUM, 0, HEIGHTMAP_VERTEX_NUM);
+					}
+
+				}
+		}
 	}
 
 	if (!doMultiPassWireFrame)
@@ -2144,33 +2275,49 @@ void HeightMapRenderObjClass::renderTerrainPass(CameraClass *pCamera)
 
 	//Apply the shader and material
 
-	DX8Wrapper::Set_Index_Buffer(m_indexBuffer,0);
-
-	for (Int j=0; j<m_numVBTilesY; j++)
-		for (Int i=0; i<m_numVBTilesX; i++)
+#ifndef PRE_TRANSFORM_VERTEX
+	if (m_numBatches > 0)
+	{
+		for (Int batch=0; batch<m_numBatches; batch++)
 		{
-			DX8Wrapper::Set_Vertex_Buffer(getVertexBufferTile(i, j));
-#ifdef PRE_TRANSFORM_VERTEX
-			if (m_xformedVertexBuffer && pass==0) {
-				// Note - m_xformedVertexBuffer should only be used for non T&L hardware.  jba.
-				DX8Wrapper::Apply_Render_State_Changes();
-				int code = DX8Wrapper::_Get_D3D_Device8()->ProcessVertices(0, 0, numVertex, m_xformedVertexBuffer[j*m_numVBTilesX+i], 0);
-				::OutputDebugString("did process vertex\n");
-			}
-			if (m_xformedVertexBuffer) {
-				// Note - m_xformedVertexBuffer should only be used for non T&L hardware.  jba.
-				DX8Wrapper::Apply_Render_State_Changes();
-				DX8Wrapper::_Get_D3D_Device8()->SetStreamSource(
-					0,
-					m_xformedVertexBuffer[j*m_numVBTilesX+i],
-					D3DXGetFVFVertexSize(D3DFVF_XYZRHW |D3DFVF_DIFFUSE|D3DFVF_TEX2));
-				DX8Wrapper::_Get_D3D_Device8()->SetVertexShader(D3DFVF_XYZRHW |D3DFVF_DIFFUSE|D3DFVF_TEX2);
-			}
-#endif
+			DX8Wrapper::Set_Vertex_Buffer(m_batchVertexBuffers[batch]);
+			DX8Wrapper::Set_Index_Buffer(m_batchIndexBuffers[batch], 0);
 			if (Is_Hidden() == 0) {
-				DX8Wrapper::Draw_Triangles(0, HEIGHTMAP_POLYGON_NUM, 0, HEIGHTMAP_VERTEX_NUM);
+				DX8Wrapper::Draw_Triangles(0, HEIGHTMAP_POLYGON_NUM*m_batchTileCounts[batch], 0, HEIGHTMAP_VERTEX_NUM*m_batchTileCounts[batch]);
 			}
 		}
+	}
+	else
+#endif
+	{
+		DX8Wrapper::Set_Index_Buffer(m_indexBuffer,0);
+
+		for (Int j=0; j<m_numVBTilesY; j++)
+			for (Int i=0; i<m_numVBTilesX; i++)
+			{
+				DX8Wrapper::Set_Vertex_Buffer(getVertexBufferTile(i, j));
+#ifdef PRE_TRANSFORM_VERTEX
+				if (m_xformedVertexBuffer && pass==0) {
+					// Note - m_xformedVertexBuffer should only be used for non T&L hardware.  jba.
+					DX8Wrapper::Apply_Render_State_Changes();
+					int code = DX8Wrapper::_Get_D3D_Device8()->ProcessVertices(0, 0, numVertex, m_xformedVertexBuffer[j*m_numVBTilesX+i], 0);
+					::OutputDebugString("did process vertex\n");
+				}
+				if (m_xformedVertexBuffer) {
+					// Note - m_xformedVertexBuffer should only be used for non T&L hardware.  jba.
+					DX8Wrapper::Apply_Render_State_Changes();
+					DX8Wrapper::_Get_D3D_Device8()->SetStreamSource(
+						0,
+						m_xformedVertexBuffer[j*m_numVBTilesX+i],
+						D3DXGetFVFVertexSize(D3DFVF_XYZRHW |D3DFVF_DIFFUSE|D3DFVF_TEX2));
+					DX8Wrapper::_Get_D3D_Device8()->SetVertexShader(D3DFVF_XYZRHW |D3DFVF_DIFFUSE|D3DFVF_TEX2);
+				}
+#endif
+				if (Is_Hidden() == 0) {
+					DX8Wrapper::Draw_Triangles(0, HEIGHTMAP_POLYGON_NUM, 0, HEIGHTMAP_VERTEX_NUM);
+				}
+			}
+	}
 }
 
 //=============================================================================
